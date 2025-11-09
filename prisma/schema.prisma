@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum TokenType {
+  ACCESS
+  REFRESH
+}
+
+enum ColorLevel {
+  RED      // 0-43 - Needs Support
+  ORANGE   // 44-83 - Moderate
+  GREEN    // 84-100 - Excellent
+}
+
+enum AgeGroup {
+  AGE_12_17   // "12-17"
+  AGE_18_25   // "18-25"
+  AGE_26_40   // "26-40"
+  AGE_41_60   // "41-60"
+  AGE_60_PLUS // "60+"
+}
+
+enum Language {
+  ENGLISH
+  NEDERLANDS
+  ARABIC
+  TIGRINYA
+  RUSSIAN
+}
+
+// ============================================
+// ADMIN & AUTHENTICATION
+// ============================================
+
+model Admin {
+  id                                               String     @id @default(uuid())
+  email                                            String     @unique
+  password          String   // Hashed with bcrypt
+  role                                             Role       @default(ADMIN)
+  isActive                                         Boolean    @default(true)
+  lastLoginAt                                      DateTime?
+  passwordChangedAt                                DateTime?
+  createdAt                                        DateTime   @default(now())
+  updatedAt                                        DateTime   @updatedAt
+
+  //                                               Relations
+  sessions                                         Session[]
+
+  @@map("admins")
+}
+
+model User {
+  id          String        @id @default(uuid())
+  deviceId    String        @unique
+  language    Language      @default(ENGLISH)
+  ageGroup    AgeGroup?
+  lastSeenAt  DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  //          Relations
+  submissions Submission[]
+
+  @@map("users")
+}
+
+model Session {
+  id            String     @id @default(uuid())
+  adminId       String
+
+  accessToken   String     @unique
+  refreshToken  String     @unique
+
+  isActive      Boolean    @default(true)
+  isRevoked     Boolean    @default(false)
+  revokedAt     DateTime?
+  revokedReason String?
+  lastActivity  DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  //            Relations
+  admin         Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+
+// USER SUBMISSIONS (Anonymous)
+// ============================================
+
+model Submission {
+  id                                        String      @id @default(uuid())
+  userId                                    String
+  ipHash                                    String
+
+  responses   Json         // WHO-5 answers
+  rawScore                                  Int
+  score                                     Int
+  colorLevel                                ColorLevel
+
+  language                                  Language
+  ageGroup                                  AgeGroup
+
+  userAgent                                 String?
+  platform                                  String?
+  submittedAt                               DateTime    @default(now())
+  createdAt                                 DateTime    @default(now())
+  updatedAt                                 DateTime    @updatedAt
+
+  user                                      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("submissions")
+}
+
+// ============================================
+// RATE LIMITING
+// ============================================
+
+model RateLimit {
+  id               String     @id @default(uuid())
+  deviceId         String
+  ipHash           String
+  lastSubmissionAt DateTime
+  submissionCount  Int        @default(1)
+  isBlocked        Boolean    @default(false)
+  blockedUntil     DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@map("rate_limits")
+}
+
+// ============================================
+// THEMES & APP CONFIG
+// ============================================
+
+model Theme {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("themes")
+}
+
+model AppConfig {
+  id               String    @id @default(uuid())
+
+  // Platform Info
+  platformName     String    @default("RAUW")
+  organizationName String?
+  adminEmail       String?
+  companyDetails   String?   @db.Text
+
+  //               Branding
+  primaryColor     String    @default("#5F9EA0")
+  logo             String?
+
+  //               Rules
+  sessionTimeout   Int       @default(60) // in minutes
+  dailyLimitRule   Int       @default(1) // submissions per device per day
+  maxIpSubmissions Int       @default(10) // optional: rate-limit config
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("app_configs")
+}
