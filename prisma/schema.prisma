@@ -7,10 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================
 // ENUMS
-// ============================================
-
 enum Role {
   ADMIN
   USER
@@ -22,17 +19,17 @@ enum TokenType {
 }
 
 enum ColorLevel {
-  RED      // 0-43 - Needs Support
-  ORANGE   // 44-83 - Moderate
-  GREEN    // 84-100 - Excellent
+  RED      
+  ORANGE   
+  GREEN    
 }
 
 enum AgeGroup {
-  AGE_12_17   // "12-17"
-  AGE_18_25   // "18-25"
-  AGE_26_40   // "26-40"
-  AGE_41_60   // "41-60"
-  AGE_60_PLUS // "60+"
+  AGE_12_17   
+  AGE_18_25   
+  AGE_26_40   
+  AGE_41_60   
+  AGE_60_PLUS 
 }
 
 enum Language {
@@ -43,10 +40,7 @@ enum Language {
   RUSSIAN
 }
 
-// ============================================
 // ADMIN & AUTHENTICATION
-// ============================================
-
 model Admin {
   id                                               String     @id @default(uuid())
   email                                            String     @unique
@@ -102,15 +96,12 @@ model Session {
 
 
 // USER SUBMISSIONS (Anonymous)
-// ============================================
-
 model Submission {
   id                                        String      @id @default(uuid())
   userId                                    String
   ipHash                                    String
 
   responses   Json         // WHO-5 answers
-  rawScore                                  Int
   score                                     Int
   colorLevel                                ColorLevel
 
@@ -128,10 +119,8 @@ model Submission {
   @@map("submissions")
 }
 
-// ============================================
-// RATE LIMITING
-// ============================================
 
+// RATE LIMITING
 model RateLimit {
   id               String     @id @default(uuid())
   deviceId         String
@@ -146,10 +135,8 @@ model RateLimit {
   @@map("rate_limits")
 }
 
-// ============================================
-// THEMES & APP CONFIG
-// ============================================
 
+// THEMES & APP CONFIG
 model Theme {
   id        String    @id @default(uuid())
   name      String    @unique
