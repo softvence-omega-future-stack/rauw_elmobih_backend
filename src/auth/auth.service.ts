@@ -4,12 +4,14 @@ import { JwtService } from '@nestjs/jwt';
 import {
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { errorResponse, successResponse } from 'src/utils/response.util';
+import { excludeFields } from 'src/utils/exclude.util';
 
 @Injectable()
 export class AuthService {
@@ -182,6 +184,72 @@ export class AuthService {
     }
   }
 
+  async changePassword(
+    adminId: string,
+    dto: { oldPassword: string; newPassword: string },
+  ) {
+    try {
+      const admin = await this.prisma.admin.findUnique({
+        where: { id: adminId },
+      });
+
+      if (!admin) {
+        throw new UnauthorizedException('Admin not found');
+      }
+
+      // Verify old password
+      const isPasswordValid = await bcrypt.compare(
+        dto.oldPassword,
+        admin.password,
+      );
+      if (!isPasswordValid) {
+        throw new ForbiddenException('Old password is incorrect');
+      }
+
+      // Hash new password
+      const hashedNewPassword = await bcrypt.hash(dto.newPassword, 10);
+
+      // Update password
+      await this.prisma.admin.update({
+        where: { id: adminId },
+        data: { password: hashedNewPassword, passwordChangedAt: new Date() },
+      });
+
+      return successResponse(null, 'Password changed successfully');
+    } catch (error) {
+      console.error('Error in changePassword:', error);
+      return errorResponse(
+        error.message || 'Something went wrong',
+        'Failed to change password',
+      );
+    }
+  }
+
+  async getCurrentUser(adminId: string) {
+    try {
+      const admin = await this.prisma.admin.findUnique({
+        where: { id: adminId },
+      });
+
+      if (!admin) {
+        throw new NotFoundException('Admin not found');
+      }
+
+      const safeAdmin = excludeFields(admin, ['password']);
+
+      return successResponse(
+        safeAdmin,
+        'Fetched current user info successfully',
+      );
+    } catch (error) {
+      console.error('Error in getCurrentUser:', error);
+      return errorResponse(
+        error.message || 'Something went wrong',
+        'Failed to get current user',
+      );
+    }
+  }
+
   async logout(accessToken: string) {
     try {
       // Find and delete session
@@ -197,18 +265,20 @@ export class AuthService {
   }
 
   private async generateTokens(adminId: string, email: string, role: string) {
-    const accessTokenExpiration = this.config.get<string>('ACCESS_TOKEN_EXPIRATION') || '15m';
-    const refreshTokenExpiration = this.config.get<string>('REFRESH_TOKEN_EXPIRATION') || '7d';
-    
+    const accessTokenExpiration =
+      this.config.get<string>('ACCESS_TOKEN_EXPIRATION') || '15m';
+    const refreshTokenExpiration =
+      this.config.get<string>('REFRESH_TOKEN_EXPIRATION') || '7d';
+
     const accessTokenPayload = {
-      sub: adminId,
+      id: adminId,
       email,
       role,
       type: 'access',
     };
 
     const refreshTokenPayload = {
-      sub: adminId,
+      id: adminId,
       email,
       type: 'refresh',
     };
@@ -233,16 +303,21 @@ export class AuthService {
   private parseExpirationToSeconds(expiration: string): number {
     const match = expiration.match(/^(\d+)([smhd])$/);
     if (!match) return 900; // default 15 minutes
-    
+
     const [, value, unit] = match;
     const num = parseInt(value, 10);
-    
+
     switch (unit) {
-      case 's': return num;
-      case 'm': return num * 60;
-      case 'h': return num * 3600;
-      case 'd': return num * 86400;
-      default: return 900;
+      case 's':
+        return num;
+      case 'm':
+        return num * 60;
+      case 'h':
+        return num * 3600;
+      case 'd':
+        return num * 86400;
+      default:
+        return 900;
     }
   }
 }
