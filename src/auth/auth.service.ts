@@ -2,21 +2,29 @@ import { PrismaService } from 'prisma/prisma.service';
 import { RegisterAdminDto } from './dto/register-admin.dto';
 import { JwtService } from '@nestjs/jwt';
 import {
-  ConflictException,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { errorResponse, successResponse } from 'src/utils';
 import { LoginDto } from './dto/login.dto';
+import { errorResponse, successResponse } from 'src/utils/response.util';
 
 @Injectable()
 export class AuthService {
+  private refreshJwtService: JwtService;
+
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
-  ) {}
+    private config: ConfigService,
+  ) {
+    // Create separate JWT service for refresh tokens
+    this.refreshJwtService = new JwtService({
+      secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+    });
+  }
 
   async registerAdmin(dto: RegisterAdminDto) {
     try {
@@ -119,7 +127,79 @@ export class AuthService {
     }
   }
 
+  async refreshToken(refreshToken: string) {
+    try {
+      // Verify refresh token
+      const payload = this.refreshJwtService.verify(refreshToken);
+
+      if (payload.type !== 'refresh') {
+        throw new UnauthorizedException('Invalid token type');
+      }
+
+      // Find session with this refresh token
+      const session = await this.prisma.session.findFirst({
+        where: {
+          refreshToken,
+          admin: { isActive: true },
+        },
+        include: { admin: true },
+      });
+
+      if (!session) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      // Generate new tokens
+      const tokens = await this.generateTokens(
+        session.admin.id,
+        session.admin.email,
+        session.admin.role,
+      );
+
+      // Update session with new tokens
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          lastActivity: new Date(),
+        },
+      });
+
+      return successResponse(
+        {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          expiresIn: tokens.expiresIn,
+        },
+        'Token refreshed successfully',
+      );
+    } catch (error) {
+      return errorResponse(
+        error.message || 'Something went wrong',
+        'Invalid signature for refresh token',
+      );
+    }
+  }
+
+  async logout(accessToken: string) {
+    try {
+      // Find and delete session
+      await this.prisma.session.deleteMany({
+        where: { accessToken },
+      });
+
+      return successResponse(null, 'Logged out successfully');
+    } catch (error) {
+      console.error('Error in logout:', error);
+      throw error;
+    }
+  }
+
   private async generateTokens(adminId: string, email: string, role: string) {
+    const accessTokenExpiration = this.config.get<string>('ACCESS_TOKEN_EXPIRATION') || '15m';
+    const refreshTokenExpiration = this.config.get<string>('REFRESH_TOKEN_EXPIRATION') || '7d';
+    
     const accessTokenPayload = {
       sub: adminId,
       email,
@@ -134,20 +214,35 @@ export class AuthService {
     };
 
     const accessToken = this.jwt.sign(accessTokenPayload, {
-      expiresIn: '15m',
+      expiresIn: this.parseExpirationToSeconds(accessTokenExpiration),
     });
 
-    const refreshToken = this.jwt.sign(refreshTokenPayload, {
-      expiresIn: '7d',
+    const refreshToken = this.refreshJwtService.sign(refreshTokenPayload, {
+      expiresIn: this.parseExpirationToSeconds(refreshTokenExpiration),
     });
 
-    // Calculate expiration time in seconds (simple conversion for now)
-    const expiresIn = 900; // 15 minutes in seconds
+    const expiresIn = this.parseExpirationToSeconds(accessTokenExpiration);
 
     return {
       accessToken,
       refreshToken,
       expiresIn,
     };
+  }
+
+  private parseExpirationToSeconds(expiration: string): number {
+    const match = expiration.match(/^(\d+)([smhd])$/);
+    if (!match) return 900; // default 15 minutes
+    
+    const [, value, unit] = match;
+    const num = parseInt(value, 10);
+    
+    switch (unit) {
+      case 's': return num;
+      case 'm': return num * 60;
+      case 'h': return num * 3600;
+      case 'd': return num * 86400;
+      default: return 900;
+    }
   }
 }

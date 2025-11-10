@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { errorResponse } from 'src/utils';
+import { errorResponse } from 'src/utils/response.util';
 
 
 @Catch()
