@@ -4,6 +4,7 @@ import { PrismaExceptionFilter } from './common/exceptions/prisma-exception.filt
 import { AllExceptionsFilter } from './common/exceptions/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import * as dotenv from 'dotenv';
+import * as requestIp from 'request-ip';
 
 dotenv.config();
 
@@ -18,6 +19,9 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: false,
   });
+
+  // Enable IP detection
+  app.use(requestIp.mw());
 
   app.useGlobalFilters(new PrismaExceptionFilter(), new AllExceptionsFilter());
 
