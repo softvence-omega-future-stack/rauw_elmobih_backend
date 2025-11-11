@@ -39,7 +39,6 @@ export class UsersService {
         data: {
           deviceId,
           language: (language || 'ENGLISH') as Language,
-          ageGroup: (ageGroup || null) as AgeGroup | null,
         },
       });
     }
