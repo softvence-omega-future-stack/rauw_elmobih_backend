@@ -19,3 +19,27 @@ export interface SubmissionResult {
     timeRemaining?: string;
   };
 }
+
+export interface UserWithSubmissions {
+  userId: string;
+  deviceId: string;
+  language: string;
+  ageGroup: string | null;
+  lastSeenAt: Date;
+  createdAt: Date;
+  totalSubmissions: number;
+  submissions: Array<{
+    id: string;
+    ipHash: string;
+    responses: Array<{
+      questionKey: string;
+      question: string;
+      answerText: string;
+    }>;
+    score: number;
+    colorLevel: string;
+    userAgent?: string;
+    submittedAt: Date;
+    createdAt: Date;
+  }>;
+}
