@@ -5,6 +5,7 @@ import { AllExceptionsFilter } from './common/exceptions/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import * as dotenv from 'dotenv';
 import * as requestIp from 'request-ip';
+import { ValidationPipe } from '@nestjs/common';
 
 dotenv.config();
 
@@ -22,6 +23,14 @@ async function bootstrap() {
 
   // Enable IP detection
   app.use(requestIp.mw());
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,               // needed for @Transform()
+    }),
+  );
 
   app.useGlobalFilters(new PrismaExceptionFilter(), new AllExceptionsFilter());
 

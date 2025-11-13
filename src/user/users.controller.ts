@@ -1,8 +1,17 @@
-import { Controller, Post, Get, Body, Headers, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Headers,
+  Req,
+  ValidationPipe,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import * as requestIp from 'request-ip';
 import { UsersService } from './users.service';
 import { DeviceUtils } from '../utils/device.utils';
+import { SubmitAssessmentDto } from 'src/submissions/dto/submit-assessment.dto';
 
 @Controller('users')
 export class UsersController {
@@ -19,9 +28,7 @@ export class UsersController {
     @Req() req: Request,
   ) {
     const deviceId = this.getDeviceId(req, userAgent);
-    const user = await this.usersService.findOrCreate(
-      deviceId,
-    );
+    const user = await this.usersService.findOrCreate(deviceId);
 
     // Get user stats for journey
     const stats = await this.usersService.getUserStats(user.id);
@@ -38,12 +45,19 @@ export class UsersController {
 
   @Post('submit')
   async submit(
-    @Body() body: any,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: SubmitAssessmentDto,
     @Headers('user-agent') userAgent: string,
     @Req() req: Request,
   ) {
     const deviceId = this.getDeviceId(req, userAgent);
-    const ip = requestIp.getClientIp(req) || 'unknown';
+    const ip = requestIp.getClientIp(req) ?? 'unknown';
 
     const result = await this.usersService.submitAssessment({
       deviceId,
