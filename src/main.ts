@@ -28,7 +28,7 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
-      transform: true,               // needed for @Transform()
+      transform: true,
     }),
   );
 

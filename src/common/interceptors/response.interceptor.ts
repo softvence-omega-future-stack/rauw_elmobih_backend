@@ -1,24 +1,43 @@
 import {
-  CallHandler,
-  ExecutionContext,
   Injectable,
   NestInterceptor,
+  ExecutionContext,
+  CallHandler,
 } from '@nestjs/common';
-import { Observable, map } from 'rxjs';
-import { successResponse } from '../../utils/response.util';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+
+interface Response<T> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  timestamp: string;
+}
 
 @Injectable()
-export class ResponseInterceptor<T> implements NestInterceptor<T, any> {
-  intercept(context: ExecutionContext, next: CallHandler<T>): Observable<any> {
+export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
+  intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<Response<T>> {
     return next.handle().pipe(
-      map((data: any) => {
-        // Safe check — if already wrapped, skip
-        if (data && typeof data === 'object' && 'success' in data) {
-          return data;
-        }
+      map((result) => {
+        const now = new Date().toISOString();
 
-        // Otherwise, wrap using your standard success format
-        return successResponse(data);
+        if (result && typeof result === 'object' && 'message' in result) {
+          const { message, ...data } = result;
+          return {
+            success: true,
+            message,
+            data,
+            timestamp: now,
+          };
+        }
+        return {
+          success: true,
+          data: result,
+          timestamp: now,
+        };
       }),
     );
   }

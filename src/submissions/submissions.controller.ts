@@ -1,10 +1,9 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { SubmissionsService } from './submissions.service';
 import { errorResponse, paginatedResponse } from 'src/utils/response.util';
-import { JwtAuthGuard } from 'src/guard/auth.guard';
+
 
 @Controller('submissions')
-// @UseGuards(JwtAuthGuard)
 export class SubmissionsController {
   constructor(private submissionsService: SubmissionsService) {}
 
