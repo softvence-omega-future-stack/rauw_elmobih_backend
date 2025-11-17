@@ -15,37 +15,43 @@ import {
 import type { Request } from 'express';
 import * as requestIp from 'request-ip';
 import { UsersService } from './users.service';
-import { DeviceUtils } from '../utils/device.utils';
 import { SubmitAssessmentDto } from 'src/submissions/dto/submit-assessment.dto';
 
 @Controller('users')
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
-  private getDeviceId(req: Request, userAgent: string): string {
-    const ip = requestIp.getClientIp(req) || 'unknown';
-    return DeviceUtils.generateDeviceId(ip, userAgent);
+  /**
+   * Get device ID from request (helper method)
+   */
+  private getDeviceId(req: Request, userAgent: string, headers: Record<string, string>): string {
+    const ip = requestIp.getClientIp(req) ?? 'unknown';
+    return this.usersService.extractDeviceId(headers, ip, userAgent);
   }
 
   @Get('identify')
   async identifyUser(
     @Headers('user-agent') userAgent: string = 'unknown',
+    @Headers() headers: Record<string, string>,
     @Req() req: Request,
   ) {
     try {
       const ip = requestIp.getClientIp(req) ?? 'unknown';
-      const deviceId = DeviceUtils.generateDeviceId(ip, userAgent);
 
-      const { user, isNew } = await this.usersService.identifyOrCreate(deviceId);
-      const stats = await this.usersService.getUserStats(user.id);
+      const { user, isNew, stats, deviceId } =
+        await this.usersService.identifyUser(ip, userAgent, headers);
 
-      const message = isNew ? 'Welcome! You can submit your first assessment.' : 'Welcome back!';
+      const message = isNew
+        ? 'Welcome! You can submit your first assessment.'
+        : 'Welcome back!';
 
       return {
+        success: true,
         message,
         data: {
           user: {
             id: user.id,
+            deviceId: user.deviceId, // Include deviceId for client storage
             language: user.language,
             ageGroup: user.ageGroup,
           },
@@ -55,6 +61,7 @@ export class UsersController {
             lastSubmission: stats.lastSubmission,
           },
         },
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
       throw new InternalServerErrorException({
@@ -77,11 +84,18 @@ export class UsersController {
     )
     body: SubmitAssessmentDto,
     @Headers('user-agent') userAgent: string,
+    @Headers() headers: Record<string, string>,
     @Req() req: Request,
   ) {
     try {
-      const deviceId = this.getDeviceId(req, userAgent);
       const ip = requestIp.getClientIp(req) ?? 'unknown';
+
+      // Extract device ID using the enhanced method
+      const deviceId = this.usersService.extractDeviceId(
+        headers,
+        ip,
+        userAgent,
+      );
 
       const result = await this.usersService.submitAssessment({
         deviceId,
@@ -90,6 +104,7 @@ export class UsersController {
         language: body.language,
         ageGroup: body.ageGroup,
         userAgent,
+        headers,
       });
 
       // Success response
@@ -104,6 +119,7 @@ export class UsersController {
           submittedAt: result.submission.submittedAt,
           interpretation: this.getInterpretation(result.submission.score),
           cooldown: result.cooldown,
+          deviceId, // Return deviceId for client storage
         },
         timestamp: new Date().toISOString(),
       };
@@ -138,15 +154,15 @@ export class UsersController {
 
   @Get('cooldown-status')
   async getCooldownStatus(
-    @Headers('user-agent') userAgent: string,
+    @Headers('user-agent') userAgent: string = 'unknown',
+    @Headers() headers: Record<string, string>,
     @Req() req: Request,
   ) {
     try {
-      const deviceId = this.getDeviceId(req, userAgent);
-      const { user } = await this.usersService.identifyOrCreate(deviceId);
+      const deviceId = this.getDeviceId(req, userAgent, headers);
+      const { user } = await this.usersService.identifyOrCreate(deviceId, headers);
       
-      const rateLimitingService = this.usersService['rateLimit']; // Access via reflection or make public
-      const status = await rateLimitingService.getCooldownStatus(user.id);
+      const status = await this.usersService.getCooldownStatus(user.id);
 
       return {
         success: true,

@@ -6,7 +6,6 @@ export interface ApiResponse<T = any> {
   message?: string;
   data?: T;
   error?: string;
-  timestamp: string;
 }
 
 
@@ -18,7 +17,6 @@ export function successResponse<T>(
     success: true,
     message,
     data,
-    timestamp: new Date().toISOString(),
   };
 }
 
@@ -30,7 +28,6 @@ export function errorResponse(
     success: false,
     message,
     error,
-    timestamp: new Date().toISOString(),
   };
 }
 
@@ -44,7 +41,6 @@ export interface PaginatedResponse<T> {
     totalPages: number;
     hasMore: boolean;
   };
-  timestamp: string;
 }
 
 export function paginatedResponse<T>(
@@ -66,6 +62,5 @@ export function paginatedResponse<T>(
       totalPages,
       hasMore,
     },
-    timestamp: new Date().toISOString(),
   };
 }

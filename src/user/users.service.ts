@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { RateLimitingService } from '../rate-limiting/rate-limiting.service';
 import { DeviceUtils } from '../utils/device.utils';
 import { PrismaService } from 'prisma/prisma.service';
@@ -9,8 +14,143 @@ import { SubmissionResult } from 'src/common/interface/submission-result';
 export class UsersService {
   constructor(
     private prisma: PrismaService,
-    private rateLimit: RateLimitingService,
+    private rateLimit: RateLimitingService, // Make sure this is properly injected
   ) {}
+
+  /**
+   * Extract device ID from request headers with fallback to generation
+   */
+extractDeviceId(headers: Record<string, string>, ip: string, userAgent: string): string {
+  // Try to get from headers first
+  const headerDeviceId = headers['x-device-id'] || headers['device-id'] || headers['x-client-id'];
+  
+  console.log('=== DEVICE ID EXTRACTION ===');
+  console.log('Header Device ID:', headerDeviceId || 'Not found');
+  console.log('Header Valid:', headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId));
+  
+  if (headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId)) {
+    console.log('Using header device ID');
+    return headerDeviceId;
+  }
+
+  // Fallback to generated device ID
+  console.log('Generating new device ID from IP and User-Agent');
+  const generatedId = DeviceUtils.generateDeviceId(ip, userAgent);
+  console.log('Generated Device ID:', generatedId);
+  console.log('============================');
+  
+  return generatedId;
+}
+
+  /**
+   * Get or create user with enhanced device ID handling
+   */
+  async identifyOrCreate(
+    deviceId: string,
+    headers: Record<string, string> = {},
+  ) {
+    let user = await this.prisma.user.findUnique({
+      where: { deviceId },
+    });
+
+    const isNew = !user;
+    console.log('User found in DB:', !!user);
+
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          deviceId,
+          // Set default language from headers if available
+          language: this.getLanguageFromHeaders(headers) || Language.ENGLISH,
+        },
+      });
+    } else {
+      // Update last seen and potentially language from headers
+      const updateData: any = { lastSeenAt: new Date() };
+
+      const headerLanguage = this.getLanguageFromHeaders(headers);
+      if (headerLanguage && !user.language) {
+        updateData.language = headerLanguage;
+      }
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: updateData,
+      });
+    }
+
+    return { user, isNew };
+  }
+
+  /**
+   * Extract language from Accept-Language header
+   */
+  private getLanguageFromHeaders(
+    headers: Record<string, string>,
+  ): Language | null {
+    const acceptLanguage = headers['accept-language'];
+    if (!acceptLanguage) return null;
+
+    // Simple mapping from browser languages to our supported languages
+    const languageMap: Record<string, Language> = {
+      nl: Language.NEDERLANDS,
+      ar: Language.ARABIC,
+      ti: Language.TIGRINYA,
+      ru: Language.RUSSIAN,
+      en: Language.ENGLISH,
+    };
+
+    const primaryLang = acceptLanguage
+      .split(',')[0]
+      .split('-')[0]
+      .toLowerCase();
+    return languageMap[primaryLang] || null;
+  }
+
+  /**
+   * Enhanced identify method for controller use
+   */
+  async identifyUser(
+    ip: string,
+    userAgent: string,
+    headers: Record<string, string> = {},
+  ) {
+    const deviceId = this.extractDeviceId(headers, ip, userAgent);
+
+    //! Debug logs for device identification
+    console.log('=== DEVICE IDENTIFICATION DEBUG ===');
+    console.log('IP:', ip);
+    console.log('User-Agent:', userAgent);
+    console.log(
+      'Headers Device ID:',
+      headers['x-device-id'] || headers['device-id'] || 'Not provided',
+    );
+    console.log('Generated Device ID:', deviceId);
+    console.log(
+      'Accept-Language:',
+      headers['accept-language'] || 'Not provided',
+    );
+    console.log('====================================');
+
+    const { user, isNew } = await this.identifyOrCreate(deviceId, headers);
+    const stats = await this.getUserStats(user.id);
+
+    //! Log user creation/identification
+    console.log(`User ${isNew ? 'CREATED' : 'FOUND'}:`, {
+      userId: user.id,
+      deviceId: user.deviceId,
+      language: user.language,
+      ageGroup: user.ageGroup,
+      isNew,
+    });
+
+    return {
+      user,
+      isNew,
+      stats,
+      deviceId, // Return for client storage
+    };
+  }
 
   async getUserStats(userId: string) {
     const submissions = await this.prisma.submission.findMany({
@@ -30,25 +170,22 @@ export class UsersService {
     };
   }
 
-  async identifyOrCreate(deviceId: string) {
-    let user = await this.prisma.user.findUnique({
-      where: { deviceId },
-    });
-
-    const isNew = !user;
-
-    if (!user) {
-      user = await this.prisma.user.create({
-        data: { deviceId },
-      });
-    } else {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { lastSeenAt: new Date() },
+  /**
+   * Get cooldown status for user
+   */
+  async getCooldownStatus(userId: string) {
+    try {
+      // Use the rateLimit service that's already injected
+      return await this.rateLimit.getCooldownStatus(userId);
+    } catch (error) {
+      console.error('Error getting cooldown status:', error);
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Failed to get cooldown status',
+        error: 'COOLDOWN_CHECK_FAILED',
+        timestamp: new Date().toISOString(),
       });
     }
-
-    return { user, isNew };
   }
 
   async submitAssessment(data: {
@@ -58,14 +195,21 @@ export class UsersService {
     language: string;
     ageGroup: string;
     userAgent?: string;
+    headers?: Record<string, string>;
   }): Promise<SubmissionResult> {
     try {
       // First, identify or create user to get userId
-      const { user: foundUser } = await this.identifyOrCreate(data.deviceId);
+      const { user: foundUser } = await this.identifyOrCreate(
+        data.deviceId,
+        data.headers,
+      );
 
       // Check 24-hour cooldown using the actual userId
-      const rateLimitCheck = await this.rateLimit.canSubmit(foundUser.id, data.ip);
-      
+      const rateLimitCheck = await this.rateLimit.canSubmit(
+        foundUser.id,
+        data.ip,
+      );
+
       if (!rateLimitCheck.canSubmit) {
         throw new ConflictException({
           success: false,
@@ -77,14 +221,25 @@ export class UsersService {
         });
       }
 
-      // Update language/ageGroup if missing
-      if (!foundUser.language || !foundUser.ageGroup) {
+      // Update language/ageGroup if missing or different
+      const updateData: any = {};
+      if (
+        data.language &&
+        (!foundUser.language || foundUser.language !== data.language)
+      ) {
+        updateData.language = data.language as Language;
+      }
+      if (
+        data.ageGroup &&
+        (!foundUser.ageGroup || foundUser.ageGroup !== data.ageGroup)
+      ) {
+        updateData.ageGroup = data.ageGroup as AgeGroup;
+      }
+
+      if (Object.keys(updateData).length > 0) {
         await this.prisma.user.update({
           where: { id: foundUser.id },
-          data: {
-            language: data.language as Language,
-            ageGroup: data.ageGroup as AgeGroup,
-          },
+          data: updateData,
         });
       }
 
@@ -97,7 +252,8 @@ export class UsersService {
       if (!user?.language || !user?.ageGroup) {
         throw new BadRequestException({
           success: false,
-          message: 'User profile incomplete. Please provide language and age group.',
+          message:
+            'User profile incomplete. Please provide language and age group.',
           error: 'INCOMPLETE_PROFILE',
           timestamp: new Date().toISOString(),
         });
@@ -105,12 +261,13 @@ export class UsersService {
 
       // Calculate score
       const scores = Object.values(data.responses) as number[];
-      
+
       // Validate responses
       if (scores.length !== 5) {
         throw new BadRequestException({
           success: false,
-          message: 'Invalid number of responses. WHO-5 requires exactly 5 answers.',
+          message:
+            'Invalid number of responses. WHO-5 requires exactly 5 answers.',
           error: 'INVALID_RESPONSES',
           timestamp: new Date().toISOString(),
         });
@@ -161,7 +318,9 @@ export class UsersService {
 
       let groupAverage: number | null = null;
       if (userSubmissions.length > 0) {
-        const avg = userSubmissions.reduce((sum, s) => sum + s.score, 0) / userSubmissions.length;
+        const avg =
+          userSubmissions.reduce((sum, s) => sum + s.score, 0) /
+          userSubmissions.length;
         groupAverage = Math.round(avg);
       }
 
@@ -189,9 +348,12 @@ export class UsersService {
       };
     } catch (error) {
       console.error('Submission error:', error);
-      
+
       // Re-throw HTTP exceptions as they are
-      if (error instanceof ConflictException || error instanceof BadRequestException) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
 
