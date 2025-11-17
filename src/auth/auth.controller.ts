@@ -1,4 +1,12 @@
-import { Body, Controller, Post, Headers, UseGuards, Req, Get } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Headers,
+  UseGuards,
+  Req,
+  Get,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterAdminDto } from './dto/register-admin.dto';
 import { LoginDto } from './dto/login.dto';
@@ -17,7 +25,8 @@ export class AuthController {
 
   @Post('register-admin')
   async registerAdmin(@Body() dto: RegisterAdminDto) {
-    return this.authService.registerAdmin(dto);
+    const result = await this.authService.registerAdmin(dto);
+    return result;
   }
 
   @Post('login')
@@ -34,7 +43,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   async changePassword(
-    @CurrentUser('id') adminId: string, 
+    @CurrentUser('id') adminId: string,
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(adminId, dto);

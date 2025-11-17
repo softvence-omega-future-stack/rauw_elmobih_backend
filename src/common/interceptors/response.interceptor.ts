@@ -11,34 +11,30 @@ interface Response<T> {
   success: boolean;
   data?: T;
   message?: string;
-  timestamp: string;
 }
 
 @Injectable()
-export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
-  intercept(
-    context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<Response<T>> {
+export class ResponseInterceptor<T> implements NestInterceptor<T, any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     return next.handle().pipe(
       map((result) => {
-        const now = new Date().toISOString();
 
-        if (result && typeof result === 'object' && 'message' in result) {
-          const { message, ...data } = result;
-          return {
-            success: true,
-            message,
-            data,
-            timestamp: now,
-          };
+        // If service already returns { success: true | false, ... }
+        if (
+          result &&
+          typeof result === 'object' &&
+          'success' in result
+        ) {
+          return result; // DO NOT wrap
         }
+
+        // Otherwise wrap normally
         return {
           success: true,
           data: result,
-          timestamp: now,
         };
       }),
     );
   }
 }
+

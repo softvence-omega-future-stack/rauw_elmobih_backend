@@ -74,22 +74,23 @@ model User {
 }
 
 model Session {
-  id            String     @id @default(uuid())
-  adminId       String
+  id                    String     @id @default(uuid())
+  adminId               String
 
-  accessToken   String     @unique
-  refreshToken  String     @unique
+  accessToken           String     @unique
+  refreshToken          String     @unique
 
-  isActive      Boolean    @default(true)
-  isRevoked     Boolean    @default(false)
-  revokedAt     DateTime?
-  revokedReason String?
-  lastActivity  DateTime   @default(now())
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  isActive              Boolean    @default(true)
+  isRevoked             Boolean    @default(false)
+  revokedAt             DateTime?
+  revokedReason         String?
+  lastActivity          DateTime   @default(now())
+  refreshTokenExpiresAt DateTime
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
 
-  //            Relations
-  admin         Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  //                    Relations
+  admin                 Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
 }

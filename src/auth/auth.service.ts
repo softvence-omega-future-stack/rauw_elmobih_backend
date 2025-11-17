@@ -22,51 +22,59 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
   ) {
-    // Create separate JWT service for refresh tokens
     this.refreshJwtService = new JwtService({
       secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
     });
   }
 
-  async registerAdmin(dto: RegisterAdminDto) {
-    try {
-      // Check if admin already exists
-      const existing = await this.prisma.admin.findUnique({
-        where: { email: dto.email },
-      });
-
-      if (existing) {
-        return errorResponse('Admin already exists', 'Duplicate email');
-      }
-
-      // Hash password
-      const hashedPassword = await bcrypt.hash(dto.password, 10);
-
-      // Create new admin
-      const admin = await this.prisma.admin.create({
-        data: {
-          email: dto.email,
-          password: hashedPassword,
-          role: 'ADMIN',
-        },
-      });
-
-      return successResponse(
-        {
-          id: admin.id,
-          email: admin.email,
-          role: admin.role,
-        },
-        'Admin registered successfully',
-      );
-    } catch (error) {
-      console.error('Error in registerAdmin:', error);
-      return errorResponse(
-        error.message || 'Something went wrong',
-        'Failed to register admin',
-      );
-    }
+  async findById(id: string) {
+    return this.prisma.admin.findUnique({
+      where: { id },
+    });
   }
+
+async registerAdmin(dto: RegisterAdminDto) {
+  try {
+    // Check if admin already exists
+    const existing = await this.prisma.admin.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (existing) {
+      return errorResponse('Duplicate email', 'Admin already exists');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    // Create new admin
+    const admin = await this.prisma.admin.create({
+      data: {
+        email: dto.email,
+        password: hashedPassword,
+        role: 'ADMIN',
+      },
+    });
+
+    return successResponse(
+      {
+        id: admin.id,
+        email: admin.email,
+        role: admin.role,
+      },
+      'Admin registered successfully'
+    );
+
+  } catch (error) {
+    console.error('Error in registerAdmin:', error);
+
+    return errorResponse(
+      'Failed to register admin',
+      error.message || 'Something went wrong'
+    );
+  }
+}
+
 
   async login(dto: LoginDto) {
     try {
@@ -100,13 +108,20 @@ export class AuthService {
         admin.role,
       );
 
-      // Create session
+      await this.prisma.session.deleteMany({
+        where: {
+          refreshTokenExpiresAt: { lt: new Date() },
+        },
+      });
+
+      // Now create new session
       const session = await this.prisma.session.create({
         data: {
           adminId: admin.id,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           lastActivity: new Date(),
+          refreshTokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
         },
       });
 
@@ -129,60 +144,64 @@ export class AuthService {
     }
   }
 
-  async refreshToken(refreshToken: string) {
-    try {
-      // Verify refresh token
-      const payload = this.refreshJwtService.verify(refreshToken);
+async refreshToken(refreshToken: string) {
+  try {
+    // Verify refresh token
+    const payload = this.refreshJwtService.verify(refreshToken);
 
-      if (payload.type !== 'refresh') {
-        throw new UnauthorizedException('Invalid token type');
-      }
-
-      // Find session with this refresh token
-      const session = await this.prisma.session.findFirst({
-        where: {
-          refreshToken,
-          admin: { isActive: true },
-        },
-        include: { admin: true },
-      });
-
-      if (!session) {
-        throw new UnauthorizedException('Invalid refresh token');
-      }
-
-      // Generate new tokens
-      const tokens = await this.generateTokens(
-        session.admin.id,
-        session.admin.email,
-        session.admin.role,
-      );
-
-      // Update session with new tokens
-      await this.prisma.session.update({
-        where: { id: session.id },
-        data: {
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-          lastActivity: new Date(),
-        },
-      });
-
-      return successResponse(
-        {
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-          expiresIn: tokens.expiresIn,
-        },
-        'Token refreshed successfully',
-      );
-    } catch (error) {
-      return errorResponse(
-        error.message || 'Something went wrong',
-        'Invalid signature for refresh token',
-      );
+    if (payload.type !== 'refresh') {
+      throw new UnauthorizedException('Invalid token type');
     }
+
+    // Find the valid session
+    const session = await this.prisma.session.findFirst({
+      where: {
+        refreshToken,
+        isActive: true,
+        isRevoked: false,
+        admin: { isActive: true },
+      },
+      include: { admin: true },
+    });
+
+    if (!session) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // Only generate a new ACCESS TOKEN
+    const accessToken = this.jwt.sign(
+      {
+        id: session.admin.id,
+        email: session.admin.email,
+        role: session.admin.role,
+        type: 'access',
+      },
+      { expiresIn: '15m' } // or your configured duration
+    );
+
+    // Update session (ONLY access token, DO NOT regenerate refresh token)
+    await this.prisma.session.update({
+      where: { id: session.id },
+      data: {
+        accessToken,
+        lastActivity: new Date(),
+      },
+    });
+
+    return successResponse(
+      {
+        accessToken,
+      },
+      'Access token refreshed successfully',
+    );
+  } catch (error) {
+    return errorResponse(
+      error.message || 'Something went wrong',
+      'Invalid signature for refresh token',
+    );
   }
+}
+
 
   async changePassword(
     adminId: string,
@@ -213,6 +232,11 @@ export class AuthService {
       await this.prisma.admin.update({
         where: { id: adminId },
         data: { password: hashedNewPassword, passwordChangedAt: new Date() },
+      });
+
+      await this.prisma.session.updateMany({
+        where: { adminId },
+        data: { isActive: false, isRevoked: true },
       });
 
       return successResponse(null, 'Password changed successfully');
@@ -252,9 +276,9 @@ export class AuthService {
 
   async logout(accessToken: string) {
     try {
-      // Find and delete session
-      await this.prisma.session.deleteMany({
+      await this.prisma.session.updateMany({
         where: { accessToken },
+        data: { isActive: false, isRevoked: true, revokedAt: new Date() },
       });
 
       return successResponse(null, 'Logged out successfully');
