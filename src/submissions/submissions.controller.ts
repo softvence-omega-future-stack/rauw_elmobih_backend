@@ -3,6 +3,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
 } from '@nestjs/common';
 import { SubmissionsService } from './submissions.service';
@@ -11,6 +12,7 @@ import {
   paginatedResponse,
   successResponse,
 } from 'src/utils/response.util';
+import { SubmissionStatsQueryDto } from './dto/submission-stats-filter.dto';
 
 @Controller('submissions')
 export class SubmissionsController {
@@ -32,6 +34,14 @@ export class SubmissionsController {
     } catch (error) {
       return errorResponse(error.message, 'Failed to fetch submissions');
     }
+  }
+
+  @Get('all-with-ai')
+  getAllWithAi(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.submissionsService.getAllSubmissionsWithAi(+page, +limit);
   }
 
   @Get('by-users')
@@ -79,5 +89,17 @@ export class SubmissionsController {
     } catch (error) {
       return errorResponse(error.message, 'Failed to fetch user submissions');
     }
+  }
+
+  @Get('stats')
+  async getStats(@Query() query: SubmissionStatsQueryDto) {
+    return this.submissionsService.getSubmissionStats({
+      dateRange: query.dateRange,
+      language: query.language,
+      ageGroup: query.ageGroup,
+      colorLevel: query.colorLevel,
+      minScore: query.minScore ? Number(query.minScore) : undefined,
+      maxScore: query.maxScore ? Number(query.maxScore) : undefined,
+    });
   }
 }
