@@ -18,6 +18,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { Request } from 'express';
 import { RolesGuard } from 'src/guard/role.guard';
 import { CurrentUser } from 'src/decorator/current-user.decorator';
+import { VerifyTokenDto } from './dto/verify-token.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -54,6 +55,11 @@ export class AuthController {
   @Roles(Role.ADMIN)
   async getCurrentUser(@CurrentUser('id') adminId: string) {
     return this.authService.getCurrentUser(adminId);
+  }
+
+   @Post('verify-token')
+  verifyToken(@Body() dto: VerifyTokenDto) {
+    return this.authService.verifyToken(dto.token);
   }
 
   @Post('logout')
