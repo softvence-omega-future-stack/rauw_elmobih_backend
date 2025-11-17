@@ -61,14 +61,12 @@ export class UsersController {
             lastSubmission: stats.lastSubmission,
           },
         },
-        timestamp: new Date().toISOString(),
       };
     } catch (error) {
       throw new InternalServerErrorException({
         success: false,
         message: 'Failed to identify user',
         error: 'IDENTIFICATION_FAILED',
-        timestamp: new Date().toISOString(),
       });
     }
   }
