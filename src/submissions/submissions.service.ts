@@ -1,14 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
+import { AiSummaryService } from 'src/ai/ai-summary.service';
 import { UserWithSubmissions } from 'src/common/interface/submission-result';
 import {
   optionLabels,
   questionLabels,
 } from 'src/common/question/question-mapper';
+import { errorResponse, successResponse } from 'src/utils/response.util';
 
 @Injectable()
 export class SubmissionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private aiSummaryService: AiSummaryService,
+  ) {}
 
   async getAllSubmissions(page: number = 1, limit: number = 10) {
     try {
@@ -44,9 +49,9 @@ export class SubmissionsService {
           submission.responses as Record<string, number>,
         ).map(([key, value]) => ({
           questionKey: key,
-          question: questionLabels[key] || key, 
-        //   answer: value,
-          answerText: optionLabels[value as number] || 'Unknown', 
+          question: questionLabels[key] || key,
+          //   answer: value,
+          answerText: optionLabels[value as number] || 'Unknown',
         })),
       }));
 
@@ -84,8 +89,8 @@ export class SubmissionsService {
       ]);
 
       // Get all submissions for these users
-      const userIds = usersWithCounts.map(user => user.id);
-      
+      const userIds = usersWithCounts.map((user) => user.id);
+
       const userSubmissions = await this.prisma.submission.findMany({
         where: {
           userId: {
@@ -109,27 +114,104 @@ export class SubmissionsService {
       });
 
       // Group submissions by user
-      const submissionsByUser = userSubmissions.reduce((acc, submission) => {
-        if (!acc[submission.userId]) {
-          acc[submission.userId] = [];
-        }
-        acc[submission.userId].push(submission);
-        return acc;
-      }, {} as Record<string, any[]>);
+      const submissionsByUser = userSubmissions.reduce(
+        (acc, submission) => {
+          if (!acc[submission.userId]) {
+            acc[submission.userId] = [];
+          }
+          acc[submission.userId].push(submission);
+          return acc;
+        },
+        {} as Record<string, any[]>,
+      );
 
       // Build the final response structure
-      const usersWithSubmissions: UserWithSubmissions[] = usersWithCounts.map(user => {
-        const userSubs = submissionsByUser[user.id] || [];
-        
-        return {
-          userId: user.id,
-          deviceId: user.deviceId,
-          language: user.language,
-          ageGroup: user.ageGroup,
-          lastSeenAt: user.lastSeenAt,
-          createdAt: user.createdAt,
-          totalSubmissions: user._count.submissions,
-          submissions: userSubs.map(submission => ({
+      const usersWithSubmissions: UserWithSubmissions[] = usersWithCounts.map(
+        (user) => {
+          const userSubs = submissionsByUser[user.id] || [];
+
+          return {
+            userId: user.id,
+            deviceId: user.deviceId,
+            language: user.language,
+            ageGroup: user.ageGroup,
+            lastSeenAt: user.lastSeenAt,
+            createdAt: user.createdAt,
+            totalSubmissions: user._count.submissions,
+            submissions: userSubs.map((submission) => ({
+              id: submission.id,
+              ipHash: submission.ipHash,
+              responses: Object.entries(
+                submission.responses as Record<string, number>,
+              ).map(([key, value]) => ({
+                questionKey: key,
+                question: questionLabels[key] || key,
+                answerText: optionLabels[value as number] || 'Unknown',
+              })),
+              score: submission.score,
+              colorLevel: submission.colorLevel,
+              userAgent: submission.userAgent,
+              submittedAt: submission.submittedAt,
+              createdAt: submission.createdAt,
+            })),
+          };
+        },
+      );
+
+      return {
+        users: usersWithSubmissions,
+        total: totalUsers,
+        pagination: {
+          page,
+          limit,
+          totalPages: Math.ceil(totalUsers / limit),
+          hasMore: page < Math.ceil(totalUsers / limit),
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch submissions by user: ${error.message}`);
+    }
+  }
+
+  async getSubmissionsByUserId(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    try {
+      const skip = (page - 1) * limit;
+
+      // Validate user
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          deviceId: true,
+          language: true,
+          ageGroup: true,
+          lastSeenAt: true,
+          createdAt: true,
+        },
+      });
+
+      if (!user) {
+        return errorResponse('User not found', 'Invalid user ID');
+      }
+
+      const [submissions, totalSubmissions] = await Promise.all([
+        this.prisma.submission.findMany({
+          where: { userId },
+          orderBy: { submittedAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.submission.count({ where: { userId } }),
+      ]);
+
+      // Process each submission and attach AI summary
+      const submissionsWithLabels = await Promise.all(
+        submissions.map(async (submission) => {
+          const formatted = {
             id: submission.id,
             ipHash: submission.ipHash,
             responses: Object.entries(
@@ -144,96 +226,46 @@ export class SubmissionsService {
             userAgent: submission.userAgent,
             submittedAt: submission.submittedAt,
             createdAt: submission.createdAt,
-          })),
-        };
-      });
+          };
 
-      return { 
-        users: usersWithSubmissions, 
-        total: totalUsers,
-        pagination: {
-          page,
-          limit,
-          totalPages: Math.ceil(totalUsers / limit),
-          hasMore: page < Math.ceil(totalUsers / limit),
-        }
-      };
-    } catch (error) {
-      throw new Error(`Failed to fetch submissions by user: ${error.message}`);
-    }
-  }
+          try {
+            const aiSummary = await this.aiSummaryService.getSummary(userId);
 
-  async getSubmissionsByUserId(userId: string, page: number = 1, limit: number = 10) {
-    try {
-      const skip = (page - 1) * limit;
-
-      // Verify user exists
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          deviceId: true,
-          language: true,
-          ageGroup: true, // This can be null
-          lastSeenAt: true,
-          createdAt: true,
-        },
-      });
-
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      const [submissions, totalSubmissions] = await Promise.all([
-        this.prisma.submission.findMany({
-          where: { userId },
-          orderBy: { submittedAt: 'desc' },
-          skip,
-          take: limit,
+            return {
+              ...formatted,
+              aiSummary,
+              aiError: null,
+            };
+          } catch (error) {
+            return {
+              ...formatted,
+              aiSummary: null,
+              aiError: 'AI summary unavailable',
+            };
+          }
         }),
-        this.prisma.submission.count({
-          where: { userId },
-        }),
-      ]);
+      );
 
-      // Map responses to include question labels
-      const submissionsWithLabels = submissions.map((submission) => ({
-        id: submission.id,
-        ipHash: submission.ipHash,
-        responses: Object.entries(
-          submission.responses as Record<string, number>,
-        ).map(([key, value]) => ({
-          questionKey: key,
-          question: questionLabels[key] || key,
-          answerText: optionLabels[value as number] || 'Unknown',
-        })),
-        score: submission.score,
-        colorLevel: submission.colorLevel,
-        userAgent: submission.userAgent || undefined,
-        submittedAt: submission.submittedAt,
-        createdAt: submission.createdAt,
-      }));
-
-      return {
-        user: {
-          id: user.id,
-          deviceId: user.deviceId,
-          language: user.language,
-          ageGroup: user.ageGroup, // This can be null
-          lastSeenAt: user.lastSeenAt,
-          createdAt: user.createdAt,
+      // Final structured response
+      return successResponse(
+        {
+          user,
+          submissions: submissionsWithLabels,
+          total: totalSubmissions,
+          pagination: {
+            page,
+            limit,
+            totalPages: Math.ceil(totalSubmissions / limit),
+            hasMore: page < Math.ceil(totalSubmissions / limit),
+          },
         },
-        submissions: submissionsWithLabels,
-        total: totalSubmissions,
-        pagination: {
-          page,
-          limit,
-          totalPages: Math.ceil(totalSubmissions / limit),
-          hasMore: page < Math.ceil(totalSubmissions / limit),
-        },
-      };
+        'User submissions retrieved successfully',
+      );
     } catch (error) {
-      throw new Error(`Failed to fetch user submissions: ${error.message}`);
+      return errorResponse(
+        error.message || 'Something went wrong',
+        'Failed to fetch user submissions',
+      );
     }
   }
 }

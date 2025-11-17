@@ -13,7 +13,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
     ConfigModule.forRoot({ isGlobal: true }),
     AuthModule,
     UsersModule,
-    SubmissionsModule
+    SubmissionsModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy, PrismaService],
