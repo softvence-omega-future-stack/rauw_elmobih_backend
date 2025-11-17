@@ -9,9 +9,7 @@ export interface ApiResponse<T = any> {
   timestamp: string;
 }
 
-/**
- * Create success response
- */
+
 export function successResponse<T>(
   data: T,
   message?: string,
@@ -24,9 +22,6 @@ export function successResponse<T>(
   };
 }
 
-/**
- * Create error response
- */
 export function errorResponse(
   error: string,
   message?: string,
@@ -39,9 +34,6 @@ export function errorResponse(
   };
 }
 
-/**
- * Create paginated response
- */
 export interface PaginatedResponse<T> {
   success: boolean;
   data: T[];

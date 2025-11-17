@@ -131,6 +131,7 @@ model RateLimit {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
+  @@unique([deviceId, ipHash], name: "deviceId_ipHash")
   @@map("rate_limits")
 }
 
@@ -162,7 +163,7 @@ model AppConfig {
   //               Rules
   sessionTimeout   Int       @default(60) // in minutes
   dailyLimitRule   Int       @default(1) // submissions per device per day
-  maxIpSubmissions Int       @default(10) // optional: rate-limit config
+  maxIpSubmissions Int       @default(1) // optional: rate-limit config
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
