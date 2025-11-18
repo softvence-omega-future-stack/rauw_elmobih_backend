@@ -662,49 +662,227 @@ export class SubmissionsService {
     }
   }
 
-async getAverageScoreByAgeGroup() {
-  try {
-    // ✅ Get all age groups from Prisma enum
-    const allAgeGroups = Object.values(AgeGroup);
+  async getAverageScoreByAgeGroup() {
+    try {
+      // ✅ Get all age groups from Prisma enum
+      const allAgeGroups = Object.values(AgeGroup);
 
-    // Get all submissions including those with null ageGroup
-    const grouped = await this.prisma.submission.groupBy({
-      by: ['ageGroup'],
-      _avg: { score: true },
-      _count: { score: true },
-    });
+      // Get all submissions including those with null ageGroup
+      const grouped = await this.prisma.submission.groupBy({
+        by: ['ageGroup'],
+        _avg: { score: true },
+        _count: { score: true },
+      });
 
-    // Create a map for quick lookup
-    const groupedMap = new Map(
-      grouped.map(g => [g.ageGroup, {
-        averageScore: g._avg.score || 0,
-        submissions: g._count.score
-      }])
-    );
+      // Create a map for quick lookup
+      const groupedMap = new Map(
+        grouped.map((g) => [
+          g.ageGroup,
+          {
+            averageScore: g._avg.score || 0,
+            submissions: g._count.score,
+          },
+        ]),
+      );
 
-    const result = allAgeGroups.map((age) => {
-      const found = groupedMap.get(age);
+      const result = allAgeGroups.map((age) => {
+        const found = groupedMap.get(age);
 
-      return {
-        ageGroup: age,
-        averageScore: found ? Math.round(found.averageScore) : 0,
-        submissions: found ? found.submissions : 0,
-      };
-    });
+        return {
+          ageGroup: age,
+          averageScore: found ? Math.round(found.averageScore) : 0,
+          submissions: found ? found.submissions : 0,
+        };
+      });
 
-    return successResponse(
-      {
-        totalAgeGroups: result.length,
-        ageGroups: result,
-      },
-      'Average WHO-5 score by age group retrieved successfully',
-    );
-  } catch (error) {
-    return errorResponse(
-      error.message || 'Failed to calculate average score by age group',
-      'Error computing WHO-5 score statistics',
-    );
+      return successResponse(
+        {
+          totalAgeGroups: result.length,
+          ageGroups: result,
+        },
+        'Average WHO-5 score by age group retrieved successfully',
+      );
+    } catch (error) {
+      return errorResponse(
+        error.message || 'Failed to calculate average score by age group',
+        'Error computing WHO-5 score statistics',
+      );
+    }
   }
-}
 
+  // Add this method to your SubmissionsService class
+  async getWeeklyScoreTrend(weeks: number = 8) {
+    try {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(endDate.getDate() - weeks * 7); // Go back 8 weeks
+
+      // Get submissions from the past 8 weeks
+      const submissions = await this.prisma.submission.findMany({
+        where: {
+          submittedAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        select: {
+          score: true,
+          submittedAt: true,
+        },
+        orderBy: {
+          submittedAt: 'asc',
+        },
+      });
+
+      if (submissions.length === 0) {
+        return successResponse(
+          {
+            weeks: [],
+            summary: {
+              totalSubmissions: 0,
+              overallAverage: 0,
+              trend: 'no_data',
+            },
+          },
+          'Weekly score trend retrieved successfully (no data)',
+        );
+      }
+
+      // Group submissions by week
+      const weeklyData: Record<string, { scores: number[]; total: number }> =
+        {};
+
+      submissions.forEach((submission) => {
+        const weekKey = this.getWeekKey(submission.submittedAt);
+
+        if (!weeklyData[weekKey]) {
+          weeklyData[weekKey] = { scores: [], total: 0 };
+        }
+
+        weeklyData[weekKey].scores.push(submission.score);
+        weeklyData[weekKey].total += submission.score;
+      });
+
+      // Generate all week labels for the past 8 weeks
+      const weekLabels = this.generateWeekLabels(weeks);
+
+      // Build response with all weeks, including those with no data
+      const weeklyTrend = weekLabels.map((week) => {
+        const weekData = weeklyData[week.key];
+        const averageScore =
+          weekData && weekData.scores.length > 0
+            ? Math.round(weekData.total / weekData.scores.length)
+            : 0;
+
+        return {
+          week: week.label,
+          weekKey: week.key,
+          averageScore,
+          submissions: weekData ? weekData.scores.length : 0,
+          startDate: week.startDate,
+          endDate: week.endDate,
+        };
+      });
+
+      // Calculate overall average and trend
+      const allScores = submissions.map((s) => s.score);
+      const overallAverage = Math.round(
+        allScores.reduce((a, b) => a + b, 0) / allScores.length,
+      );
+
+      // Determine trend (comparing first and last week with data)
+      const weeksWithData = weeklyTrend.filter((w) => w.submissions > 0);
+      let trend: 'increasing' | 'decreasing' | 'stable' | 'no_data' = 'no_data';
+
+      if (weeksWithData.length >= 2) {
+        const firstWeek = weeksWithData[0];
+        const lastWeek = weeksWithData[weeksWithData.length - 1];
+
+        if (lastWeek.averageScore > firstWeek.averageScore + 2) {
+          trend = 'increasing';
+        } else if (lastWeek.averageScore < firstWeek.averageScore - 2) {
+          trend = 'decreasing';
+        } else {
+          trend = 'stable';
+        }
+      }
+
+      return successResponse(
+        {
+          weeks: weeklyTrend,
+          summary: {
+            totalSubmissions: submissions.length,
+            overallAverage,
+            trend,
+            period: `${weeks} weeks`,
+            dateRange: {
+              start: startDate,
+              end: endDate,
+            },
+          },
+        },
+        'Weekly well-being score trend retrieved successfully',
+      );
+    } catch (error) {
+      return errorResponse(
+        error.message || 'Failed to calculate weekly score trend',
+        'Error computing weekly well-being trend',
+      );
+    }
+  }
+
+  private generateWeekLabels(weeks: number): Array<{
+    key: string;
+    label: string;
+    startDate: Date;
+    endDate: Date;
+  }> {
+    const result: Array<{
+      key: string;
+      label: string;
+      startDate: Date;
+      endDate: Date;
+    }> = [];
+
+    const now = new Date();
+
+    for (let i = weeks - 1; i >= 0; i--) {
+      // Calculate end of week (Sunday)
+      const endDate = new Date(now);
+      endDate.setDate(now.getDate() - i * 7);
+      endDate.setHours(23, 59, 59, 999);
+
+      // Calculate start of week (Monday)
+      const startDate = new Date(endDate);
+      startDate.setDate(endDate.getDate() - 6);
+      startDate.setHours(0, 0, 0, 0);
+
+      const weekKey = this.getWeekKey(endDate);
+      const weekNumber = weekKey.split('-W')[1];
+      const label = `Week ${weekNumber}`;
+
+      result.push({
+        key: weekKey,
+        label,
+        startDate,
+        endDate,
+      });
+    }
+
+    return result;
+  }
+
+  private getWeekKey(date: Date): string {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+
+    // ISO week calculation
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    const weekNumber = Math.ceil(
+      ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+    );
+
+    return `${d.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
+  }
 }
