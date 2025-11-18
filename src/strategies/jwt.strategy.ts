@@ -18,7 +18,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // For basic validation - session validation will be handled in guards or services
+    const admin = await this.authService.findById(payload.id);
+
+    if (!admin) {
+      throw new UnauthorizedException('Admin no longer exists');
+    }
+
+    if (
+      admin.passwordChangedAt &&
+      payload.iat * 1000 < admin.passwordChangedAt.getTime()
+    ) {
+      throw new UnauthorizedException('Token invalid after password change');
+    }
+
     return {
       id: payload.id,
       email: payload.email,

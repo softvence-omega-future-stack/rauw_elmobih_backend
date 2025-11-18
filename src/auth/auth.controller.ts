@@ -1,4 +1,12 @@
-import { Body, Controller, Post, Headers, UseGuards, Req, Get } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Headers,
+  UseGuards,
+  Req,
+  Get,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterAdminDto } from './dto/register-admin.dto';
 import { LoginDto } from './dto/login.dto';
@@ -10,6 +18,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { Request } from 'express';
 import { RolesGuard } from 'src/guard/role.guard';
 import { CurrentUser } from 'src/decorator/current-user.decorator';
+import { VerifyTokenDto } from './dto/verify-token.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,7 +26,8 @@ export class AuthController {
 
   @Post('register-admin')
   async registerAdmin(@Body() dto: RegisterAdminDto) {
-    return this.authService.registerAdmin(dto);
+    const result = await this.authService.registerAdmin(dto);
+    return result;
   }
 
   @Post('login')
@@ -34,7 +44,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   async changePassword(
-    @CurrentUser('id') adminId: string, 
+    @CurrentUser('id') adminId: string,
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(adminId, dto);
@@ -45,6 +55,11 @@ export class AuthController {
   @Roles(Role.ADMIN)
   async getCurrentUser(@CurrentUser('id') adminId: string) {
     return this.authService.getCurrentUser(adminId);
+  }
+
+   @Post('verify-token')
+  verifyToken(@Body() dto: VerifyTokenDto) {
+    return this.authService.verifyToken(dto.token);
   }
 
   @Post('logout')

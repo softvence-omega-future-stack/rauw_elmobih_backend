@@ -6,13 +6,20 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import * as dotenv from 'dotenv';
 import * as requestIp from 'request-ip';
 import { ValidationPipe } from '@nestjs/common';
+import { join } from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 dotenv.config();
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api/v1');
+
+  // Serve static files from /uploads
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   app.enableCors({
     origin: '*',

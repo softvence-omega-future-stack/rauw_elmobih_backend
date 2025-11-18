@@ -22,9 +22,14 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
   ) {
-    // Create separate JWT service for refresh tokens
     this.refreshJwtService = new JwtService({
       secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+    });
+  }
+
+  async findById(id: string) {
+    return this.prisma.admin.findUnique({
+      where: { id },
     });
   }
 
@@ -36,7 +41,7 @@ export class AuthService {
       });
 
       if (existing) {
-        return errorResponse('Admin already exists', 'Duplicate email');
+        return errorResponse('Duplicate email', 'Admin already exists');
       }
 
       // Hash password
@@ -61,9 +66,10 @@ export class AuthService {
       );
     } catch (error) {
       console.error('Error in registerAdmin:', error);
+
       return errorResponse(
-        error.message || 'Something went wrong',
         'Failed to register admin',
+        error.message || 'Something went wrong',
       );
     }
   }
@@ -100,13 +106,20 @@ export class AuthService {
         admin.role,
       );
 
-      // Create session
+      await this.prisma.session.deleteMany({
+        where: {
+          refreshTokenExpiresAt: { lt: new Date() },
+        },
+      });
+
+      // Now create new session
       const session = await this.prisma.session.create({
         data: {
           adminId: admin.id,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           lastActivity: new Date(),
+          refreshTokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
         },
       });
 
@@ -138,10 +151,12 @@ export class AuthService {
         throw new UnauthorizedException('Invalid token type');
       }
 
-      // Find session with this refresh token
+      // Find the valid session
       const session = await this.prisma.session.findFirst({
         where: {
           refreshToken,
+          isActive: true,
+          isRevoked: false,
           admin: { isActive: true },
         },
         include: { admin: true },
@@ -151,30 +166,31 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
-      // Generate new tokens
-      const tokens = await this.generateTokens(
-        session.admin.id,
-        session.admin.email,
-        session.admin.role,
+      // Only generate a new ACCESS TOKEN
+      const accessToken = this.jwt.sign(
+        {
+          id: session.admin.id,
+          email: session.admin.email,
+          role: session.admin.role,
+          type: 'access',
+        },
+        { expiresIn: '15m' }, // or your configured duration
       );
 
-      // Update session with new tokens
+      // Update session (ONLY access token, DO NOT regenerate refresh token)
       await this.prisma.session.update({
         where: { id: session.id },
         data: {
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
+          accessToken,
           lastActivity: new Date(),
         },
       });
 
       return successResponse(
         {
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-          expiresIn: tokens.expiresIn,
+          accessToken,
         },
-        'Token refreshed successfully',
+        'Access token refreshed successfully',
       );
     } catch (error) {
       return errorResponse(
@@ -215,6 +231,11 @@ export class AuthService {
         data: { password: hashedNewPassword, passwordChangedAt: new Date() },
       });
 
+      await this.prisma.session.updateMany({
+        where: { adminId },
+        data: { isActive: false, isRevoked: true },
+      });
+
       return successResponse(null, 'Password changed successfully');
     } catch (error) {
       console.error('Error in changePassword:', error);
@@ -250,11 +271,25 @@ export class AuthService {
     }
   }
 
+async verifyToken(token: string) {
+  try {
+    const decoded = this.jwt.verify(token);
+
+    return successResponse(decoded, 'Token is valid');
+  } catch (error) {
+    return errorResponse(
+      'Invalid or expired token',
+      'Token verification failed',
+    );
+  }
+}
+
+
   async logout(accessToken: string) {
     try {
-      // Find and delete session
-      await this.prisma.session.deleteMany({
+      await this.prisma.session.updateMany({
         where: { accessToken },
+        data: { isActive: false, isRevoked: true, revokedAt: new Date() },
       });
 
       return successResponse(null, 'Logged out successfully');
