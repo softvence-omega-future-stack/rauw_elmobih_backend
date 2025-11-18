@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Language } from '@prisma/client';
+import { AgeGroup, ColorLevel, Language } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { AiSummaryService } from 'src/ai/ai-summary.service';
 import { UserWithSubmissions } from 'src/common/interface/submission-result';
@@ -606,4 +606,105 @@ export class SubmissionsService {
       );
     }
   }
+
+  async getColorScoreDistribution() {
+    try {
+      // 1️⃣ Fetch submissions grouped by colorLevel
+      const grouped = await this.prisma.submission.groupBy({
+        by: ['colorLevel'],
+        _count: { id: true },
+      });
+
+      // 2️⃣ Convert to map for quick lookup
+      const map = new Map(
+        grouped.map((g) => [g.colorLevel, { submissions: g._count.id }]),
+      );
+
+      // 3️⃣ Count total submissions (for percentages)
+      const totalSubmissions = grouped.reduce((sum, g) => sum + g._count.id, 0);
+
+      const COLOR_LEVEL_CONFIG = {
+        RED: { name: 'Low', color: '#FF4842' },
+        ORANGE: { name: 'Moderate', color: '#FFC107' },
+        GREEN: { name: 'High', color: '#48BB78' },
+      };
+
+      // 4️⃣ Build final response ALWAYS including ALL ColorLevel enums
+      const response = Object.values(ColorLevel).map((level) => {
+        const meta = COLOR_LEVEL_CONFIG[level];
+        const count = map.get(level)?.submissions || 0;
+
+        const percentage =
+          totalSubmissions === 0
+            ? 0
+            : Math.round((count / totalSubmissions) * 100);
+
+        return {
+          name: meta.name,
+          value: percentage,
+          submissions: count,
+          color: meta.color,
+        };
+      });
+
+      return {
+        success: true,
+        message: 'Color-coded score distribution retrieved successfully',
+        data: response,
+      };
+    } catch (error) {
+      console.error('Color score distribution error', error);
+      return {
+        success: false,
+        message: 'Failed to calculate score distribution',
+        error: error.message,
+      };
+    }
+  }
+
+async getAverageScoreByAgeGroup() {
+  try {
+    // ✅ Get all age groups from Prisma enum
+    const allAgeGroups = Object.values(AgeGroup);
+
+    // Get all submissions including those with null ageGroup
+    const grouped = await this.prisma.submission.groupBy({
+      by: ['ageGroup'],
+      _avg: { score: true },
+      _count: { score: true },
+    });
+
+    // Create a map for quick lookup
+    const groupedMap = new Map(
+      grouped.map(g => [g.ageGroup, {
+        averageScore: g._avg.score || 0,
+        submissions: g._count.score
+      }])
+    );
+
+    const result = allAgeGroups.map((age) => {
+      const found = groupedMap.get(age);
+
+      return {
+        ageGroup: age,
+        averageScore: found ? Math.round(found.averageScore) : 0,
+        submissions: found ? found.submissions : 0,
+      };
+    });
+
+    return successResponse(
+      {
+        totalAgeGroups: result.length,
+        ageGroups: result,
+      },
+      'Average WHO-5 score by age group retrieved successfully',
+    );
+  } catch (error) {
+    return errorResponse(
+      error.message || 'Failed to calculate average score by age group',
+      'Error computing WHO-5 score statistics',
+    );
+  }
+}
+
 }

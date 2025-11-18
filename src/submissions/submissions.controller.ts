@@ -105,15 +105,31 @@ export class SubmissionsController {
 
   // chart
   @Get('chart/score-by-language')
-async getScoreDistributionByLanguage() {
-  try {
-    return await this.submissionsService.getScoreDistributionByLanguage();
-  } catch (error) {
-    return errorResponse(
-      error.message || 'Something went wrong',
-      'Failed to fetch score distribution by language',
-    );
+  async getScoreDistributionByLanguage() {
+    try {
+      return await this.submissionsService.getScoreDistributionByLanguage();
+    } catch (error) {
+      return errorResponse(
+        error.message || 'Something went wrong',
+        'Failed to fetch score distribution by language',
+      );
+    }
   }
-}
 
+  @Get('chart/color-by-score')
+  async getColorDistribution() {
+    return await this.submissionsService.getColorScoreDistribution();
+  }
+
+  @Get('chart/average-score-by-age')
+  async averageScoreByAge() {
+    try {
+      return await this.submissionsService.getAverageScoreByAgeGroup();
+    } catch (error) {
+      return errorResponse(
+        error.message || 'Failed to fetch data',
+        'Error retrieving average WHO-5 score by age group',
+      );
+    }
+  }
 }
