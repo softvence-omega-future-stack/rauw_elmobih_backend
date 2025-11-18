@@ -7,6 +7,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './user/users.module';
 import { SubmissionsModule } from './submissions/submissions.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
     AuthModule,
     UsersModule,
     SubmissionsModule,
+    SettingsModule
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy, PrismaService],

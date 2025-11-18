@@ -40,6 +40,13 @@ enum Language {
   RUSSIAN
 }
 
+enum OrganizationType {
+  COA
+  GGZ
+  MUNICIPALITY
+}
+
+
 // ADMIN & AUTHENTICATION
 model Admin {
   id                                               String     @id @default(uuid())
@@ -148,26 +155,17 @@ model Theme {
   @@map("themes")
 }
 
-model AppConfig {
-  id               String    @id @default(uuid())
+model OrganizationSettings {
+  id                String            @id @default(uuid())
+  organizationType  OrganizationType  @default(COA)
+  contactEmail      String?
+  phoneNumber       String?
+  name           String?
+  additionalNotes   String? @db.Text
 
-  // Platform Info
-  platformName     String    @default("RAUW")
-  organizationName String?
-  adminEmail       String?
-  companyDetails   String?   @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  //               Branding
-  primaryColor     String    @default("#5F9EA0")
-  logo             String?
-
-  //               Rules
-  sessionTimeout   Int       @default(60) // in minutes
-  dailyLimitRule   Int       @default(1) // submissions per device per day
-  maxIpSubmissions Int       @default(1) // optional: rate-limit config
-
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  @@map("app_configs")
+  @@map("organization_settings")
 }
+
