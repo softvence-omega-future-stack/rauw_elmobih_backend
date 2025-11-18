@@ -355,7 +355,7 @@ export class SubmissionsService {
   }
 
   async getSubmissionStats(filters: {
-    dateRange?: string; // e.g., "last_30_days"
+    dateRange?: string;
     language?: string;
     ageGroup?: string;
     colorLevel?: string;
@@ -372,70 +372,50 @@ export class SubmissionsService {
         maxScore = 100,
       } = filters;
 
-      // -----------------------------
-      // DATE RANGE HANDLING
-      // -----------------------------
-      const dateFilter: any = {};
+      const now = new Date();
 
-      if (dateRange) {
-        const now = new Date();
-        const ranges: Record<string, number> = {
-          last_30_days: 30,
-          last_15_days: 15,
-          last_10_days: 10,
-          last_7_days: 7,
-          yesterday: 1,
-          last_1_month: 30,
-          last_2_month: 60,
-          last_3_month: 90,
-          last_6_month: 180,
-          last_1_year: 365,
-        };
+      // DATE RANGE MAP
 
-        if (ranges[dateRange]) {
-          const days = ranges[dateRange];
-          const from = new Date();
-          from.setDate(now.getDate() - days);
-          dateFilter.gte = from;
-        }
-      }
+      const ranges: Record<string, number> = {
+        last_30_days: 30,
+        last_15_days: 15,
+        last_10_days: 10,
+        last_7_days: 7,
+        yesterday: 1,
+        last_2_month: 60,
+        last_3_month: 90,
+        last_6_month: 180,
+        last_1_year: 365,
+      };
 
-      // -----------------------------
-      // WHERE FILTERS
-      // -----------------------------
       const where: any = {
         score: { gte: minScore, lte: maxScore },
       };
 
-      if (Object.keys(dateFilter).length > 0) {
-        where.submittedAt = dateFilter;
+      // CURRENT RANGE FILTER
+
+      if (dateRange && ranges[dateRange]) {
+        const days = ranges[dateRange];
+
+        const from = new Date();
+        from.setDate(now.getDate() - days);
+
+        where.submittedAt = { gte: from };
       }
 
-      if (language && language !== 'ALL') {
-        where.language = language;
-      }
+      if (language && language !== 'ALL') where.language = language;
+      if (ageGroup && ageGroup !== 'ALL') where.ageGroup = ageGroup;
+      if (colorLevel && colorLevel !== 'ALL') where.colorLevel = colorLevel;
 
-      if (ageGroup && ageGroup !== 'ALL') {
-        where.ageGroup = ageGroup;
-      }
+      // FETCH CURRENT SUBMISSIONS
 
-      if (colorLevel && colorLevel !== 'ALL') {
-        where.colorLevel = colorLevel;
-      }
-
-      // -----------------------------
-      // FETCH FILTERED SUBMISSIONS
-      // -----------------------------
       const submissions = await this.prisma.submission.findMany({
         where,
         select: {
           id: true,
           userId: true,
           score: true,
-          colorLevel: true,
           submittedAt: true,
-          ageGroup: true,
-          language: true,
           responses: true,
         },
         orderBy: { submittedAt: 'desc' },
@@ -443,42 +423,39 @@ export class SubmissionsService {
 
       const total = submissions.length;
 
-      // If no submissions → return empty stats
       if (total === 0) {
         return successResponse(
           {
             total: 0,
+            totalChangePercent: 0,
+            anonymousCheckins: 0,
+            anonymousCheckinsPercent: 0,
+
             avgScore: 0,
+            avgScoreChange: 0,
+
             lowWellBeingPercentage: 0,
+            lowWellBeingChange: 0,
+
             topThemes: [],
+            topThemesCount: 0,
+            otherThemesCount: 0,
             themeCategories: [],
           },
           'Stats calculated successfully (empty dataset)',
         );
       }
 
-      // -----------------------------
-      // COMPUTE WHO-5 AVERAGE SCORE
-      // -----------------------------
-      const avgScore =
-        submissions.reduce((sum, item) => sum + item.score, 0) / total;
+      const avgScore = submissions.reduce((sum, s) => sum + s.score, 0) / total;
 
-      // -----------------------------
-      // LOW WELL-BEING PERCENTAGE
-      // WHO-5 scoring: < 50 = low well-being
-      // -----------------------------
       const lowCount = submissions.filter((s) => s.score < 50).length;
       const lowWellBeingPercentage = Math.round((lowCount / total) * 100);
 
-      // -----------------------------
-      // AI SUMMARY THEMES (Dynamic)
-      // -----------------------------
       const aiSummaries = await Promise.all(
         submissions.map(async (sub) => {
           try {
-            const summary = await this.aiSummaryService.getSummary(sub.userId);
-            return summary;
-          } catch (error) {
+            return await this.aiSummaryService.getSummary(sub.userId);
+          } catch {
             return null;
           }
         }),
@@ -501,20 +478,73 @@ export class SubmissionsService {
         }),
       );
 
-      // Top 3 themes
       const topThemes = themeCategories
         .sort((a, b) => b.count - a.count)
         .slice(0, 3);
 
-      // -----------------------------
-      // FINAL RESPONSE
-      // -----------------------------
+      // PREVIOUS DATE RANGE
+
+      let previousWhere = { ...where };
+
+      if (dateRange && ranges[dateRange]) {
+        const days = ranges[dateRange];
+
+        const prevFrom = new Date();
+        prevFrom.setDate(now.getDate() - days * 2);
+
+        const prevTo = new Date();
+        prevTo.setDate(now.getDate() - days);
+
+        previousWhere.submittedAt = {
+          gte: prevFrom,
+          lte: prevTo,
+        };
+      }
+
+      const previousSubs = await this.prisma.submission.findMany({
+        where: previousWhere,
+        select: { score: true },
+      });
+
+      // PREVIOUS METRICS
+
+      const prevTotal = previousSubs.length;
+
+      const prevAvg =
+        prevTotal > 0
+          ? previousSubs.reduce((a, b) => a + b.score, 0) / prevTotal
+          : 0;
+
+      const prevLowCount = previousSubs.filter((s) => s.score < 50).length;
+
+      const prevLowPercent =
+        prevTotal > 0 ? Math.round((prevLowCount / prevTotal) * 100) : 0;
+
+      const totalChangePercent =
+        prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : 0;
+
+      const avgScoreChange = Math.round(avgScore - prevAvg);
+
+      const lowWellBeingChange = lowWellBeingPercentage - prevLowPercent;
+
       return successResponse(
         {
           total,
+          totalChangePercent,
+
+          anonymousCheckins: total, // all submissions considered anonymous
+          anonymousCheckinsPercent: totalChangePercent,
+
           avgScore: Math.round(avgScore),
+          avgScoreChange,
+
           lowWellBeingPercentage,
+          lowWellBeingChange,
+
           topThemes,
+          topThemesCount: topThemes.length,
+          otherThemesCount: themeCategories.length - topThemes.length,
+
           themeCategories,
         },
         'Submission statistics retrieved successfully',
@@ -526,9 +556,4 @@ export class SubmissionsService {
       );
     }
   }
-
-
-
-
-
 }
