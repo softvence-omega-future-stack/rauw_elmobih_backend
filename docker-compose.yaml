@@ -1,0 +1,28 @@
+services:
+  app:
+    container_name: rauw-backend
+    image: sakibsakib/rauw:latest
+    build: .
+    ports:
+      - '3009:3009'
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    restart: always
+    command: >
+      sh -c "npx prisma migrate deploy && npx prisma generate && npm run start:prod"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: nest-db1
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nestdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:  # Stage 1: Build
