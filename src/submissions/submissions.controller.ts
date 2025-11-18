@@ -102,4 +102,18 @@ export class SubmissionsController {
       maxScore: query.maxScore ? Number(query.maxScore) : undefined,
     });
   }
+
+  // chart
+  @Get('chart/score-by-language')
+async getScoreDistributionByLanguage() {
+  try {
+    return await this.submissionsService.getScoreDistributionByLanguage();
+  } catch (error) {
+    return errorResponse(
+      error.message || 'Something went wrong',
+      'Failed to fetch score distribution by language',
+    );
+  }
+}
+
 }

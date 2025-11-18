@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Language } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { AiSummaryService } from 'src/ai/ai-summary.service';
 import { UserWithSubmissions } from 'src/common/interface/submission-result';
@@ -553,6 +554,55 @@ export class SubmissionsService {
       return errorResponse(
         error.message || 'Failed to calculate stats',
         'Error fetching submission stats',
+      );
+    }
+  }
+
+  // chart
+  async getScoreDistributionByLanguage() {
+    try {
+      // 1️⃣ Fetch real submissions grouped by language
+      const result = await this.prisma.submission.groupBy({
+        by: ['language'],
+        _avg: { score: true },
+        _count: { id: true },
+      });
+
+      // 2️⃣ Convert Prisma result to a map for easy lookup
+      const resultMap = new Map(
+        result.map((r) => [
+          r.language,
+          {
+            language: r.language,
+            averageScore: Math.round(r._avg.score || 0),
+            submissions: r._count.id,
+          },
+        ]),
+      );
+
+      // 3️⃣ Build final response INCLUDING ALL ENUMS
+      const allLanguagesResponse = Object.values(Language).map((lang) => {
+        if (resultMap.has(lang)) return resultMap.get(lang);
+
+        // No submissions → default 0 values
+        return {
+          language: lang,
+          averageScore: 0,
+          submissions: 0,
+        };
+      });
+
+      return successResponse(
+        {
+          totalLanguages: allLanguagesResponse.length,
+          languages: allLanguagesResponse,
+        },
+        'Score distribution by language retrieved successfully',
+      );
+    } catch (error) {
+      return errorResponse(
+        error.message || 'Something went wrong',
+        'Failed to calculate language distribution',
       );
     }
   }
