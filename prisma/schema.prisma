@@ -169,3 +169,15 @@ model OrganizationSettings {
   @@map("organization_settings")
 }
 
+model BrandSettings {
+  id           String   @id @default(uuid())
+  primaryColor String?
+  theme        String?  @default("light")  // "light" | "dark"
+  logo         String?  // file path like "/uploads/123.png"
+  name         String?  // optional friendly name (e.g. platform name variant)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("brand_settings")
+}
