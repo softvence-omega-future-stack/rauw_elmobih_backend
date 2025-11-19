@@ -160,64 +160,49 @@ export class UsersService {
     };
   }
 
-  // async getUserStats(userId: string) {
-  //   const submissions = await this.prisma.submission.findMany({
-  //     where: { userId },
-  //     orderBy: { submittedAt: 'desc' },
-  //   });
 
-  //   // Calculate days active
-  //   const uniqueDays = new Set(
-  //     submissions.map((s) => s.submittedAt.toISOString().split('T')[0]),
-  //   ).size;
-
-  //   return {
-  //     daysActive: uniqueDays,
-  //     totalSubmissions: submissions.length,
-  //     lastSubmission: submissions[0]?.submittedAt || null,
-  //   };
-  // }
-
-  async getUserStats(userId: string, userCreatedAt: Date) {
+async getUserStats(userId: string, userCreatedAt: Date) {
   const submissions = await this.prisma.submission.findMany({
     where: { userId },
     select: {
       submittedAt: true,
     },
     orderBy: { submittedAt: 'desc' },
+    take: 1, // We only need the most recent one for "last 24h" check
   });
 
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const oneDayMs = 24 * 60 * 60 * 1000;
 
-  // 1. Days since joined
+  // 1. Days since account created (calendar days)
   const createdDate = new Date(userCreatedAt);
-  const daysSinceJoined = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+  createdDate.setHours(0, 0, 0, 0);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const daysSinceJoined = Math.floor((todayStart.getTime() - createdDate.getTime()) / oneDayMs);
 
-  // 2. Unique days active (already had)
-  const uniqueDays = new Set<string>();
-  let checkedInToday = false;
-
-  submissions.forEach((s) => {
-    const dateStr = s.submittedAt.toISOString().split('T')[0];
-    uniqueDays.add(dateStr);
-
-    // Check if any submission was today
-    const submissionDate = new Date(s.submittedAt);
-    const submissionDay = new Date(submissionDate.getFullYear(), submissionDate.getMonth(), submissionDate.getDate());
-    if (submissionDay.getTime() === today.getTime()) {
-      checkedInToday = true;
-    }
+  // 2. Total unique calendar days with submissions
+  const allSubmissions = await this.prisma.submission.findMany({
+    where: { userId },
+    select: { submittedAt: true },
   });
 
+  const uniqueCalendarDays = new Set(
+    allSubmissions.map(s => s.submittedAt.toISOString().split('T')[0])
+  ).size;
+
+  // 3. Did user submit in the last 24 hours? (rolling window)
   const lastSubmission = submissions[0]?.submittedAt || null;
+  const checkedInLast24h = lastSubmission
+    ? now.getTime() - lastSubmission.getTime() <= oneDayMs
+    : false;
 
   return {
     daysSinceJoined,
-    daysActive: uniqueDays.size,
-    totalSubmissions: submissions.length,
+    daysActive: uniqueCalendarDays,
+    totalSubmissions: allSubmissions.length,
     lastSubmission,
-    checkedInToday,
+    checkedInToday: checkedInLast24h, // This is what you want!
   };
 }
 
