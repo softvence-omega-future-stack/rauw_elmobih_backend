@@ -24,7 +24,11 @@ export class UsersController {
   /**
    * Get device ID from request (helper method)
    */
-  private getDeviceId(req: Request, userAgent: string, headers: Record<string, string>): string {
+  private getDeviceId(
+    req: Request,
+    userAgent: string,
+    headers: Record<string, string>,
+  ): string {
     const ip = requestIp.getClientIp(req) ?? 'unknown';
     return this.usersService.extractDeviceId(headers, ip, userAgent);
   }
@@ -56,9 +60,11 @@ export class UsersController {
             ageGroup: user.ageGroup,
           },
           journey: {
+            daysSinceJoined: stats.daysSinceJoined,
             daysActive: stats.daysActive,
             totalSubmissions: stats.totalSubmissions,
             lastSubmission: stats.lastSubmission,
+            checkedInToday: stats.checkedInToday,
           },
         },
       };
@@ -158,8 +164,11 @@ export class UsersController {
   ) {
     try {
       const deviceId = this.getDeviceId(req, userAgent, headers);
-      const { user } = await this.usersService.identifyOrCreate(deviceId, headers);
-      
+      const { user } = await this.usersService.identifyOrCreate(
+        deviceId,
+        headers,
+      );
+
       const status = await this.usersService.getCooldownStatus(user.id);
 
       return {

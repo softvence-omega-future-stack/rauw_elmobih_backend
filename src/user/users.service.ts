@@ -20,27 +20,35 @@ export class UsersService {
   /**
    * Extract device ID from request headers with fallback to generation
    */
-extractDeviceId(headers: Record<string, string>, ip: string, userAgent: string): string {
-  // Try to get from headers first
-  const headerDeviceId = headers['x-device-id'] || headers['device-id'] || headers['x-client-id'];
-  
-  console.log('=== DEVICE ID EXTRACTION ===');
-  console.log('Header Device ID:', headerDeviceId || 'Not found');
-  console.log('Header Valid:', headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId));
-  
-  if (headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId)) {
-    console.log('Using header device ID');
-    return headerDeviceId;
-  }
+  extractDeviceId(
+    headers: Record<string, string>,
+    ip: string,
+    userAgent: string,
+  ): string {
+    // Try to get from headers first
+    const headerDeviceId =
+      headers['x-device-id'] || headers['device-id'] || headers['x-client-id'];
 
-  // Fallback to generated device ID
-  console.log('Generating new device ID from IP and User-Agent');
-  const generatedId = DeviceUtils.generateDeviceId(ip, userAgent);
-  console.log('Generated Device ID:', generatedId);
-  console.log('============================');
-  
-  return generatedId;
-}
+    console.log('=== DEVICE ID EXTRACTION ===');
+    console.log('Header Device ID:', headerDeviceId || 'Not found');
+    console.log(
+      'Header Valid:',
+      headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId),
+    );
+
+    if (headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId)) {
+      console.log('Using header device ID');
+      return headerDeviceId;
+    }
+
+    // Fallback to generated device ID
+    console.log('Generating new device ID from IP and User-Agent');
+    const generatedId = DeviceUtils.generateDeviceId(ip, userAgent);
+    console.log('Generated Device ID:', generatedId);
+    console.log('============================');
+
+    return generatedId;
+  }
 
   /**
    * Get or create user with enhanced device ID handling
@@ -133,7 +141,7 @@ extractDeviceId(headers: Record<string, string>, ip: string, userAgent: string):
     console.log('====================================');
 
     const { user, isNew } = await this.identifyOrCreate(deviceId, headers);
-    const stats = await this.getUserStats(user.id);
+    const stats = await this.getUserStats(user.id, user.createdAt);
 
     //! Log user creation/identification
     console.log(`User ${isNew ? 'CREATED' : 'FOUND'}:`, {
@@ -152,23 +160,66 @@ extractDeviceId(headers: Record<string, string>, ip: string, userAgent: string):
     };
   }
 
-  async getUserStats(userId: string) {
-    const submissions = await this.prisma.submission.findMany({
-      where: { userId },
-      orderBy: { submittedAt: 'desc' },
-    });
+  // async getUserStats(userId: string) {
+  //   const submissions = await this.prisma.submission.findMany({
+  //     where: { userId },
+  //     orderBy: { submittedAt: 'desc' },
+  //   });
 
-    // Calculate days active
-    const uniqueDays = new Set(
-      submissions.map((s) => s.submittedAt.toISOString().split('T')[0]),
-    ).size;
+  //   // Calculate days active
+  //   const uniqueDays = new Set(
+  //     submissions.map((s) => s.submittedAt.toISOString().split('T')[0]),
+  //   ).size;
 
-    return {
-      daysActive: uniqueDays,
-      totalSubmissions: submissions.length,
-      lastSubmission: submissions[0]?.submittedAt || null,
-    };
-  }
+  //   return {
+  //     daysActive: uniqueDays,
+  //     totalSubmissions: submissions.length,
+  //     lastSubmission: submissions[0]?.submittedAt || null,
+  //   };
+  // }
+
+  async getUserStats(userId: string, userCreatedAt: Date) {
+  const submissions = await this.prisma.submission.findMany({
+    where: { userId },
+    select: {
+      submittedAt: true,
+    },
+    orderBy: { submittedAt: 'desc' },
+  });
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // 1. Days since joined
+  const createdDate = new Date(userCreatedAt);
+  const daysSinceJoined = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  // 2. Unique days active (already had)
+  const uniqueDays = new Set<string>();
+  let checkedInToday = false;
+
+  submissions.forEach((s) => {
+    const dateStr = s.submittedAt.toISOString().split('T')[0];
+    uniqueDays.add(dateStr);
+
+    // Check if any submission was today
+    const submissionDate = new Date(s.submittedAt);
+    const submissionDay = new Date(submissionDate.getFullYear(), submissionDate.getMonth(), submissionDate.getDate());
+    if (submissionDay.getTime() === today.getTime()) {
+      checkedInToday = true;
+    }
+  });
+
+  const lastSubmission = submissions[0]?.submittedAt || null;
+
+  return {
+    daysSinceJoined,
+    daysActive: uniqueDays.size,
+    totalSubmissions: submissions.length,
+    lastSubmission,
+    checkedInToday,
+  };
+}
 
   /**
    * Get cooldown status for user
