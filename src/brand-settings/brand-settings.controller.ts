@@ -71,9 +71,11 @@ export class BrandSettingsController {
         };
       }
 
+      console.log("filename", file)
+
       // Attach file if uploaded
       if (file) {
-        dto.logo = `/uploads/${file.filename}`;
+        dto.logo = `${file.path}`;
       }
 
       return await this.service.create(dto);

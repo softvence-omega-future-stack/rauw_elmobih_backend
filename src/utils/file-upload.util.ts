@@ -1,8 +1,8 @@
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { diskStorage } from 'multer';
 
 export const fileStorage = diskStorage({
-  destination: './uploads',
+  destination: join(process.cwd(), 'dist', 'uploads'),
   filename: (req, file, cb) => {
     const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const extension = extname(file.originalname);
