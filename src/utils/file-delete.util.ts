@@ -1,23 +1,38 @@
-import { existsSync, unlinkSync } from 'fs';
+import { existsSync, promises as fsPromises } from 'fs';
 import { join } from 'path';
 
-export function deleteFileFromUploads(path: string | null) {
-  if (!path) return;
+export async function deleteFileFromUploads(filePath: string): Promise<void> {
+  if (!filePath) return;
 
-  // Expect stored path like "/uploads/filename.ext"
-  const filename = path.replace(/^\/uploads\//, '');
-  if (!filename) return;
+  try {
+    const filename = filePath.split('/').pop() || filePath;
+    
+    const possiblePaths = [
+      join(process.cwd(), 'uploads', filename),
+      join(process.cwd(), filePath),
+      join(__dirname, '..', '..', 'uploads', filename),
+      join(__dirname, '..', '..', filePath),
+    ];
 
-  const fullPath = join(process.cwd(), 'uploads', filename);
-
-  if (existsSync(fullPath)) {
-    try {
-      unlinkSync(fullPath);
-      console.log(`Deleted file: ${fullPath}`);
-    } catch (err) {
-      console.error('Failed to delete file:', err);
+    let deleted = false;
+    
+    for (const fullPath of possiblePaths) {
+      try {
+        await fsPromises.unlink(fullPath);
+        console.log(`Successfully deleted file: ${fullPath}`);
+        deleted = true;
+        break;
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+          console.error(`Error deleting ${fullPath}:`, error);
+        }
+      }
     }
-  } else {
-    console.log('File does not exist:', fullPath);
+
+    if (!deleted) {
+      console.warn(`File not found in any location: ${filename}`);
+    }
+  } catch (error) {
+    console.error(`Failed to delete file: ${filePath}`, error);
   }
 }
