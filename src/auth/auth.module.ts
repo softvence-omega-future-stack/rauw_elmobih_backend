@@ -6,6 +6,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { JwtStrategy } from 'src/strategies/jwt.strategy';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { AdminSeeder } from './seed/admin.seeder';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { AuthService } from './auth.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, PrismaService],
+  providers: [AuthService, JwtStrategy, PrismaService, AdminSeeder],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

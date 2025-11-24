@@ -83,16 +83,26 @@ export class BrandSettingsService {
 
   async remove(id: string) {
     try {
-      const existing = await this.prisma.brandSettings.findUnique({
+      const brand = await this.prisma.brandSettings.findUnique({
         where: { id },
       });
-      if (!existing) throw new NotFoundException('Brand settings not found');
 
-      if (existing.logo) deleteFileFromUploads(existing.logo);
+      if (!brand) {
+        throw new NotFoundException(`Brand settings with ID ${id} not found`);
+      }
 
-      await this.prisma.brandSettings.delete({ where: { id } });
+      await this.prisma.brandSettings.delete({
+        where: { id },
+      });
 
-      return successResponse(null, 'Brand settings deleted successfully');
+      if (brand.logo) {
+        await deleteFileFromUploads(brand.logo);
+      }
+
+      return {
+        success: true,
+        message: 'Brand settings deleted successfully',
+      };
     } catch (error) {
       console.error('delete brand settings error', error);
       return errorResponse(

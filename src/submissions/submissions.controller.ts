@@ -132,4 +132,27 @@ export class SubmissionsController {
       );
     }
   }
+
+  // Add this to your SubmissionsController class
+  @Get('chart/weekly-trend')
+  async getWeeklyScoreTrend(@Query('weeks') weeks: string = '8') {
+    try {
+      const weeksNum = parseInt(weeks) || 8;
+
+      // Validate weeks parameter
+      if (weeksNum < 1 || weeksNum > 52) {
+        return errorResponse(
+          'Weeks parameter must be between 1 and 52',
+          'Invalid weeks parameter',
+        );
+      }
+
+      return await this.submissionsService.getWeeklyScoreTrend(weeksNum);
+    } catch (error) {
+      return errorResponse(
+        error.message || 'Failed to fetch weekly trend',
+        'Error retrieving weekly well-being score trend',
+      );
+    }
+  }
 }
