@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { RateLimitingService } from '../rate-limiting/rate-limiting.service';
 import { DeviceUtils } from '../utils/device.utils';
@@ -160,51 +161,52 @@ export class UsersService {
     };
   }
 
+  async getUserStats(userId: string, userCreatedAt: Date) {
+    const submissions = await this.prisma.submission.findMany({
+      where: { userId },
+      select: {
+        submittedAt: true,
+      },
+      orderBy: { submittedAt: 'desc' },
+      take: 1, // We only need the most recent one for "last 24h" check
+    });
 
-async getUserStats(userId: string, userCreatedAt: Date) {
-  const submissions = await this.prisma.submission.findMany({
-    where: { userId },
-    select: {
-      submittedAt: true,
-    },
-    orderBy: { submittedAt: 'desc' },
-    take: 1, // We only need the most recent one for "last 24h" check
-  });
+    const now = new Date();
+    const oneDayMs = 24 * 60 * 60 * 1000;
 
-  const now = new Date();
-  const oneDayMs = 24 * 60 * 60 * 1000;
+    // 1. Days since account created (calendar days)
+    const createdDate = new Date(userCreatedAt);
+    createdDate.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const daysSinceJoined = Math.floor(
+      (todayStart.getTime() - createdDate.getTime()) / oneDayMs,
+    );
 
-  // 1. Days since account created (calendar days)
-  const createdDate = new Date(userCreatedAt);
-  createdDate.setHours(0, 0, 0, 0);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const daysSinceJoined = Math.floor((todayStart.getTime() - createdDate.getTime()) / oneDayMs);
+    // 2. Total unique calendar days with submissions
+    const allSubmissions = await this.prisma.submission.findMany({
+      where: { userId },
+      select: { submittedAt: true },
+    });
 
-  // 2. Total unique calendar days with submissions
-  const allSubmissions = await this.prisma.submission.findMany({
-    where: { userId },
-    select: { submittedAt: true },
-  });
+    const uniqueCalendarDays = new Set(
+      allSubmissions.map((s) => s.submittedAt.toISOString().split('T')[0]),
+    ).size;
 
-  const uniqueCalendarDays = new Set(
-    allSubmissions.map(s => s.submittedAt.toISOString().split('T')[0])
-  ).size;
+    // 3. Did user submit in the last 24 hours? (rolling window)
+    const lastSubmission = submissions[0]?.submittedAt || null;
+    const checkedInLast24h = lastSubmission
+      ? now.getTime() - lastSubmission.getTime() <= oneDayMs
+      : false;
 
-  // 3. Did user submit in the last 24 hours? (rolling window)
-  const lastSubmission = submissions[0]?.submittedAt || null;
-  const checkedInLast24h = lastSubmission
-    ? now.getTime() - lastSubmission.getTime() <= oneDayMs
-    : false;
-
-  return {
-    daysSinceJoined,
-    daysActive: uniqueCalendarDays,
-    totalSubmissions: allSubmissions.length,
-    lastSubmission,
-    checkedInToday: checkedInLast24h, // This is what you want!
-  };
-}
+    return {
+      daysSinceJoined,
+      daysActive: uniqueCalendarDays,
+      totalSubmissions: allSubmissions.length,
+      lastSubmission,
+      checkedInToday: checkedInLast24h, // This is what you want!
+    };
+  }
 
   /**
    * Get cooldown status for user
@@ -401,5 +403,21 @@ async getUserStats(userId: string, userCreatedAt: Date) {
         timestamp: new Date().toISOString(),
       });
     }
+  }
+
+  async deleteUser(userId: string) {
+    // Check if user exists
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    // Delete submissions first (optional: can rely on cascade if set)
+    await this.prisma.submission.deleteMany({ where: { userId } });
+
+    // Delete user
+    await this.prisma.user.delete({ where: { id: userId } });
+
+    return true;
   }
 }

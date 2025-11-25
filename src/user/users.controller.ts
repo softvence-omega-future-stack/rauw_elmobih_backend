@@ -11,6 +11,8 @@ import {
   InternalServerErrorException,
   ConflictException,
   BadRequestException,
+  Delete,
+  Param,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import * as requestIp from 'request-ip';
@@ -143,6 +145,29 @@ export class UsersController {
           success: false,
           message: error.message || 'Failed to submit assessment',
           error: error.name || 'SUBMISSION_ERROR',
+          timestamp: new Date().toISOString(),
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // delete user and all their submissions
+  @Delete('remove/:id')
+  async deleteUser(@Param('id') userId: string) {
+    try {
+      await this.usersService.deleteUser(userId);
+      return {
+        success: true,
+        message: 'User and all their submissions deleted successfully',
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'Failed to delete user',
+          error: error.name || 'DELETE_USER_FAILED',
           timestamp: new Date().toISOString(),
         },
         HttpStatus.BAD_REQUEST,
