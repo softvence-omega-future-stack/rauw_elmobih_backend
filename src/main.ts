@@ -22,10 +22,12 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: false,
+    origin: [
+      'https://jovial-paprenjak-92803f.netlify.app',
+      'http://localhost:5173',
+      'http://localhost:3000',
+    ],
+    credentials: true,
   });
 
   // Enable IP detection
