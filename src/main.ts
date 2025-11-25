@@ -26,6 +26,7 @@ async function bootstrap() {
       'https://jovial-paprenjak-92803f.netlify.app',
       'http://localhost:5173',
       'http://localhost:3000',
+      'https://elmobih-ai.onrender.com'
     ],
     credentials: true,
   });
