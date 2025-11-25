@@ -21,34 +21,50 @@ export class UsersService {
   /**
    * Extract device ID from request headers with fallback to generation
    */
+  // extractDeviceId(
+  //   headers: Record<string, string>,
+  //   ip: string,
+  //   userAgent: string,
+  // ): string {
+  //   // Try to get from headers first
+  //   const headerDeviceId =
+  //     headers['x-device-id'] || headers['device-id'] || headers['x-client-id'];
+
+  //   console.log('=== DEVICE ID EXTRACTION ===');
+  //   console.log('Header Device ID:', headerDeviceId || 'Not found');
+  //   console.log(
+  //     'Header Valid:',
+  //     headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId),
+  //   );
+
+  //   if (headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId)) {
+  //     console.log('Using header device ID');
+  //     return headerDeviceId;
+  //   }
+
+  //   // Fallback to generated device ID
+  //   console.log('Generating new device ID from IP and User-Agent');
+  //   const generatedId = DeviceUtils.generateDeviceId(ip, userAgent);
+  //   console.log('Generated Device ID:', generatedId);
+  //   console.log('============================');
+
+  //   return generatedId;
+  // }
+
   extractDeviceId(
     headers: Record<string, string>,
     ip: string,
     userAgent: string,
   ): string {
-    // Try to get from headers first
     const headerDeviceId =
       headers['x-device-id'] || headers['device-id'] || headers['x-client-id'];
 
-    console.log('=== DEVICE ID EXTRACTION ===');
-    console.log('Header Device ID:', headerDeviceId || 'Not found');
-    console.log(
-      'Header Valid:',
-      headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId),
-    );
-
     if (headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId)) {
-      console.log('Using header device ID');
       return headerDeviceId;
     }
 
-    // Fallback to generated device ID
-    console.log('Generating new device ID from IP and User-Agent');
-    const generatedId = DeviceUtils.generateDeviceId(ip, userAgent);
-    console.log('Generated Device ID:', generatedId);
-    console.log('============================');
-
-    return generatedId;
+    // stable across browsers
+    return DeviceUtils.generateDeviceId(ip, userAgent);
   }
 
   /**
@@ -88,7 +104,9 @@ export class UsersService {
       });
     }
 
-    return { user, isNew };
+    const stats = await this.getUserStats(user.id, user.createdAt);
+
+    return { user, isNew, stats };
   }
 
   /**

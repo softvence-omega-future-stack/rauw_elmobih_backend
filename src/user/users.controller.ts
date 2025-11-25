@@ -35,6 +35,50 @@ export class UsersController {
     return this.usersService.extractDeviceId(headers, ip, userAgent);
   }
 
+  // @Get('identify')
+  // async identifyUser(
+  //   @Headers('user-agent') userAgent: string = 'unknown',
+  //   @Headers() headers: Record<string, string>,
+  //   @Req() req: Request,
+  // ) {
+  //   try {
+  //     const ip = requestIp.getClientIp(req) ?? 'unknown';
+
+  //     const { user, isNew, stats, deviceId } =
+  //       await this.usersService.identifyUser(ip, userAgent, headers);
+
+  //     const message = isNew
+  //       ? 'Welcome! You can submit your first assessment.'
+  //       : 'Welcome back!';
+
+  //     return {
+  //       success: true,
+  //       message,
+  //       data: {
+  //         user: {
+  //           id: user.id,
+  //           deviceId: user.deviceId, // Include deviceId for client storage
+  //           language: user.language,
+  //           ageGroup: user.ageGroup,
+  //         },
+  //         journey: {
+  //           daysSinceJoined: stats.daysSinceJoined,
+  //           daysActive: stats.daysActive,
+  //           totalSubmissions: stats.totalSubmissions,
+  //           lastSubmission: stats.lastSubmission,
+  //           checkedInToday: stats.checkedInToday,
+  //         },
+  //       },
+  //     };
+  //   } catch (error) {
+  //     throw new InternalServerErrorException({
+  //       success: false,
+  //       message: 'Failed to identify user',
+  //       error: 'IDENTIFICATION_FAILED',
+  //     });
+  //   }
+  // }
+
   @Get('identify')
   async identifyUser(
     @Headers('user-agent') userAgent: string = 'unknown',
@@ -42,10 +86,12 @@ export class UsersController {
     @Req() req: Request,
   ) {
     try {
-      const ip = requestIp.getClientIp(req) ?? 'unknown';
+      const deviceId = this.getDeviceId(req, userAgent, headers);
 
-      const { user, isNew, stats, deviceId } =
-        await this.usersService.identifyUser(ip, userAgent, headers);
+      const { user, isNew, stats } = await this.usersService.identifyOrCreate(
+        deviceId,
+        headers,
+      );
 
       const message = isNew
         ? 'Welcome! You can submit your first assessment.'
@@ -57,7 +103,7 @@ export class UsersController {
         data: {
           user: {
             id: user.id,
-            deviceId: user.deviceId, // Include deviceId for client storage
+            deviceId: user.deviceId,
             language: user.language,
             ageGroup: user.ageGroup,
           },
@@ -79,6 +125,79 @@ export class UsersController {
     }
   }
 
+  // @Post('submit')
+  // async submit(
+  //   @Body(
+  //     new ValidationPipe({
+  //       whitelist: true,
+  //       forbidNonWhitelisted: true,
+  //       transform: true,
+  //     }),
+  //   )
+  //   body: SubmitAssessmentDto,
+  //   @Headers('user-agent') userAgent: string,
+  //   @Headers() headers: Record<string, string>,
+  //   @Req() req: Request,
+  // ) {
+  //   try {
+  //     const ip = requestIp.getClientIp(req) ?? 'unknown';
+
+  //     // Extract device ID using the enhanced method
+  //     const deviceId = this.usersService.extractDeviceId(
+  //       headers,
+  //       ip,
+  //       userAgent,
+  //     );
+
+  //     const result = await this.usersService.submitAssessment({
+  //       deviceId,
+  //       ip,
+  //       responses: body.responses,
+  //       language: body.language,
+  //       ageGroup: body.ageGroup,
+  //       userAgent,
+  //       headers,
+  //     });
+
+  //     // Success response
+  //     return {
+  //       success: true,
+  //       message: 'Assessment submitted successfully',
+  //       data: {
+  //         score: result.submission.score,
+  //         colorLevel: result.submission.colorLevel,
+  //         groupAverage: result.groupAverage,
+  //         submissionId: result.submission.id,
+  //         submittedAt: result.submission.submittedAt,
+  //         interpretation: this.getInterpretation(result.submission.score),
+  //         cooldown: result.cooldown,
+  //         deviceId, // Return deviceId for client storage
+  //       },
+  //       timestamp: new Date().toISOString(),
+  //     };
+  //   } catch (error) {
+  //     // Let the specific HTTP exceptions pass through
+  //     if (
+  //       error instanceof ConflictException ||
+  //       error instanceof BadRequestException ||
+  //       error instanceof InternalServerErrorException
+  //     ) {
+  //       throw error;
+  //     }
+
+  //     // Handle other errors
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message: error.message || 'Failed to submit assessment',
+  //         error: error.name || 'SUBMISSION_ERROR',
+  //         timestamp: new Date().toISOString(),
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
+
   @Post('submit')
   async submit(
     @Body(
@@ -94,14 +213,8 @@ export class UsersController {
     @Req() req: Request,
   ) {
     try {
+      const deviceId = this.getDeviceId(req, userAgent, headers);
       const ip = requestIp.getClientIp(req) ?? 'unknown';
-
-      // Extract device ID using the enhanced method
-      const deviceId = this.usersService.extractDeviceId(
-        headers,
-        ip,
-        userAgent,
-      );
 
       const result = await this.usersService.submitAssessment({
         deviceId,
@@ -113,7 +226,6 @@ export class UsersController {
         headers,
       });
 
-      // Success response
       return {
         success: true,
         message: 'Assessment submitted successfully',
@@ -125,12 +237,11 @@ export class UsersController {
           submittedAt: result.submission.submittedAt,
           interpretation: this.getInterpretation(result.submission.score),
           cooldown: result.cooldown,
-          deviceId, // Return deviceId for client storage
+          deviceId,
         },
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      // Let the specific HTTP exceptions pass through
       if (
         error instanceof ConflictException ||
         error instanceof BadRequestException ||
@@ -139,7 +250,6 @@ export class UsersController {
         throw error;
       }
 
-      // Handle other errors
       throw new HttpException(
         {
           success: false,
@@ -181,6 +291,36 @@ export class UsersController {
     return 'Excellent - Keep up the great work on your mental wellbeing';
   }
 
+  // @Get('cooldown-status')
+  // async getCooldownStatus(
+  //   @Headers('user-agent') userAgent: string = 'unknown',
+  //   @Headers() headers: Record<string, string>,
+  //   @Req() req: Request,
+  // ) {
+  //   try {
+  //     const deviceId = this.getDeviceId(req, userAgent, headers);
+  //     const { user } = await this.usersService.identifyOrCreate(
+  //       deviceId,
+  //       headers,
+  //     );
+
+  //     const status = await this.usersService.getCooldownStatus(user.id);
+
+  //     return {
+  //       success: true,
+  //       data: status,
+  //       timestamp: new Date().toISOString(),
+  //     };
+  //   } catch (error) {
+  //     throw new InternalServerErrorException({
+  //       success: false,
+  //       message: 'Failed to get cooldown status',
+  //       error: 'COOLDOWN_CHECK_FAILED',
+  //       timestamp: new Date().toISOString(),
+  //     });
+  //   }
+  // }
+
   @Get('cooldown-status')
   async getCooldownStatus(
     @Headers('user-agent') userAgent: string = 'unknown',
@@ -189,6 +329,7 @@ export class UsersController {
   ) {
     try {
       const deviceId = this.getDeviceId(req, userAgent, headers);
+
       const { user } = await this.usersService.identifyOrCreate(
         deviceId,
         headers,
