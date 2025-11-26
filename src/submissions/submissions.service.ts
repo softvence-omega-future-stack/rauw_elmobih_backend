@@ -177,10 +177,12 @@ export class SubmissionsService {
 
   // Ai summary integrated
   async getSubmissionsByUserId(
+    
     userId: string,
     page: number = 1,
     limit: number = 10,
   ) {
+    console.log("-------------------------hitone submitions--------------------------------------------");
     try {
       const skip = (page - 1) * limit;
 
@@ -196,11 +198,11 @@ export class SubmissionsService {
           createdAt: true,
         },
       });
-
+      console.log("-------------------------hittwo submitions--------------------------------------------");
       if (!user) {
         return errorResponse('User not found', 'Invalid user ID');
       }
-
+     console.log("-------------------------hitthree submitions--------------------------------------------");
       const [submissions, totalSubmissions] = await Promise.all([
         this.prisma.submission.findMany({
           where: { userId },
@@ -232,7 +234,10 @@ export class SubmissionsService {
           };
 
           try {
+            console.log("-------------------------hitfour submitions--------------------------------------------");
             const aiSummary = await this.aiSummaryService.getSummary(userId);
+
+            console.log("-------------------------hitfiver submitions--------------------------------------------");
 
             return {
               ...formatted,
@@ -274,7 +279,9 @@ export class SubmissionsService {
 
   // Ai summary integrated
   async getAllSubmissionsWithAi(page: number = 1, limit: number = 10) {
+    console.log('-------------------------hitone--------------------------------------------');
     try {
+       console.log('-------------------------hittwo--------------------------------------------');
       const skip = (page - 1) * limit;
 
       const [submissions, total] = await Promise.all([
@@ -299,7 +306,7 @@ export class SubmissionsService {
         }),
         this.prisma.submission.count(),
       ]);
-
+       console.log('-------------------------hitthree--------------------------------------------');
       // Process each submission with AI summary
       const submissionsWithAi = await Promise.all(
         submissions.map(async (sub) => {
@@ -314,10 +321,14 @@ export class SubmissionsService {
               answerText: optionLabels[value as number] || 'Unknown',
             })),
           };
-
-          // 🔥 Safe AI call
+      console.log('-------------------------hitfour--------------------------------------------');
+          // Safe AI call
           try {
+             console.log('-------------------------hitetry--------------------------------------------');
             const ai = await this.aiSummaryService.getSummary(sub.userId);
+            console.log('-------------------------hitfive--------------------------------------------');
+            console.log('AI summary fetched for submission', sub.id, ai);
+            console.log('-------------------------hitfiveend--------------------------------------------');
 
             return {
               ...formatted,

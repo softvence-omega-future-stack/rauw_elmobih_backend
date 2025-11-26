@@ -41,6 +41,8 @@ export class SubmissionsController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
+    console.log('-------------------------hitonecontrolller--------------------------------------------');
+    
     return this.submissionsService.getAllSubmissionsWithAi(+page, +limit);
   }
 

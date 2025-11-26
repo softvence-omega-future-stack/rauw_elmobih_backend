@@ -18,8 +18,11 @@ export class AiSummaryService {
 
   async getSummary(userId: string) {
     try {
+      console.log('-------------------------axiosone--------------------------------------------');
       const response = await axios.post(this.baseUrl, { user_id: userId });
-
+      console.log('-------------------------axiostwo--------------------------------------------');
+        console.log(response.data);
+       console.log('-------------------------axiostwoend--------------------------------------------');
       return response.data;
     } catch (error) {
       throw new HttpException(
