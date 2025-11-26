@@ -235,13 +235,13 @@ export class SubmissionsService {
 
           try {
             console.log("-------------------------hitfour submitions--------------------------------------------");
-            const aiSummary = await this.aiSummaryService.getSummary(userId);
+            // const aiSummary = await this.aiSummaryService.getSummary(userId);
 
             console.log("-------------------------hitfiver submitions--------------------------------------------");
 
             return {
               ...formatted,
-              aiSummary,
+              // aiSummary,
               aiError: null,
             };
           } catch (error) {
