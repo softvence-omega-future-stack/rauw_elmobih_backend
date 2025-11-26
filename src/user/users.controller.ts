@@ -23,9 +23,6 @@ import { SubmitAssessmentDto } from 'src/submissions/dto/submit-assessment.dto';
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
-  /**
-   * Get device ID from request (helper method)
-   */
   private getDeviceId(
     req: Request,
     userAgent: string,
@@ -79,6 +76,7 @@ export class UsersController {
     }
   }
 
+  
   @Post('submit')
   async submit(
     @Body(

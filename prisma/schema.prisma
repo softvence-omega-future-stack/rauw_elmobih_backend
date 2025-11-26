@@ -74,8 +74,8 @@ model User {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  //          Relations
   submissions Submission[]
+  insights    UserInsight[]  
 
   @@map("users")
 }
@@ -102,29 +102,51 @@ model Session {
   @@map("sessions")
 }
 
+model UserInsight {
+  id          String   @id @default(uuid())
+
+  userId      String
+  submissionId String?  // optional but recommended
+
+  summary     String?    @db.Text
+  themes      Json?      // store array like ["social", "sleep", "stress"]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submission  Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("user_insights")
+}
+
+
 
 // USER SUBMISSIONS (Anonymous)
 model Submission {
-  id                                        String      @id @default(uuid())
-  userId                                    String
-  ipHash                                    String
+  id            String      @id @default(uuid())
+  userId        String
+  ipHash        String
 
-  responses   Json         // WHO-5 answers
-  score                                     Int
-  colorLevel                                ColorLevel
+  responses     Json
+  score         Int
+  colorLevel    ColorLevel
 
-  language                                  Language
-  ageGroup                                  AgeGroup
+  language      Language
+  ageGroup      AgeGroup
 
-  userAgent                                 String?
-  submittedAt                               DateTime    @default(now())
-  createdAt                                 DateTime    @default(now())
-  updatedAt                                 DateTime    @updatedAt
+  userAgent     String?
+  submittedAt   DateTime    @default(now())
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  user                                      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  insights      UserInsight[]  // added
 
   @@map("submissions")
 }
+
 
 
 // RATE LIMITING

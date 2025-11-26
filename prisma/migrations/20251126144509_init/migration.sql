@@ -13,6 +13,9 @@ CREATE TYPE "AgeGroup" AS ENUM ('AGE_12_17', 'AGE_18_25', 'AGE_26_40', 'AGE_41_6
 -- CreateEnum
 CREATE TYPE "Language" AS ENUM ('ENGLISH', 'NEDERLANDS', 'ARABIC', 'TIGRINYA', 'RUSSIAN');
 
+-- CreateEnum
+CREATE TYPE "OrganizationType" AS ENUM ('COA', 'GGZ', 'MUNICIPALITY');
+
 -- CreateTable
 CREATE TABLE "admins" (
     "id" TEXT NOT NULL,
@@ -52,10 +55,24 @@ CREATE TABLE "sessions" (
     "revokedAt" TIMESTAMP(3),
     "revokedReason" TEXT,
     "lastActivity" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "refreshTokenExpiresAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "sessions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "user_insights" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "submissionId" TEXT,
+    "summary" TEXT NOT NULL,
+    "themes" JSONB NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "user_insights_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -103,21 +120,30 @@ CREATE TABLE "themes" (
 );
 
 -- CreateTable
-CREATE TABLE "app_configs" (
+CREATE TABLE "organization_settings" (
     "id" TEXT NOT NULL,
-    "platformName" TEXT NOT NULL DEFAULT 'RAUW',
-    "organizationName" TEXT,
-    "adminEmail" TEXT,
-    "companyDetails" TEXT,
-    "primaryColor" TEXT NOT NULL DEFAULT '#5F9EA0',
-    "logo" TEXT,
-    "sessionTimeout" INTEGER NOT NULL DEFAULT 60,
-    "dailyLimitRule" INTEGER NOT NULL DEFAULT 1,
-    "maxIpSubmissions" INTEGER NOT NULL DEFAULT 10,
+    "organizationType" "OrganizationType" NOT NULL DEFAULT 'COA',
+    "contactEmail" TEXT,
+    "phoneNumber" TEXT,
+    "name" TEXT,
+    "additionalNotes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "app_configs_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "organization_settings_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "brand_settings" (
+    "id" TEXT NOT NULL,
+    "primaryColor" TEXT,
+    "theme" TEXT DEFAULT 'light',
+    "logo" TEXT,
+    "name" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "brand_settings_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -133,10 +159,19 @@ CREATE UNIQUE INDEX "sessions_accessToken_key" ON "sessions"("accessToken");
 CREATE UNIQUE INDEX "sessions_refreshToken_key" ON "sessions"("refreshToken");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "rate_limits_deviceId_ipHash_key" ON "rate_limits"("deviceId", "ipHash");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "themes_name_key" ON "themes"("name");
 
 -- AddForeignKey
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_adminId_fkey" FOREIGN KEY ("adminId") REFERENCES "admins"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_insights" ADD CONSTRAINT "user_insights_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_insights" ADD CONSTRAINT "user_insights_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "submissions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "submissions" ADD CONSTRAINT "submissions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

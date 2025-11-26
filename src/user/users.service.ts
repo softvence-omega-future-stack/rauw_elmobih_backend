@@ -10,12 +10,14 @@ import { DeviceUtils } from '../utils/device.utils';
 import { PrismaService } from 'prisma/prisma.service';
 import { AgeGroup, Language } from '@prisma/client';
 import { SubmissionResult } from 'src/common/interface/submission-result';
+import { AiSummaryService } from 'src/ai/ai-summary.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private prisma: PrismaService,
     private rateLimit: RateLimitingService, // Make sure this is properly injected
+    private readonly aiService: AiSummaryService,
   ) {}
 
   /**
@@ -341,6 +343,37 @@ export class UsersService {
           userAgent: data.userAgent,
         },
       });
+
+      // Call AI API + Save insight (safe fallback if AI fails)
+      try {
+        const aiResponse = await this.aiService.generateSubmissionSummary({
+          userId: user.id,
+          responses: data.responses,
+          score,
+          colorLevel,
+        });
+
+        await this.prisma.userInsight.create({
+          data: {
+            userId: user.id,
+            submissionId: submission.id,
+            summary: aiResponse.summary,
+            themes: aiResponse.themes,
+          },
+        });
+      } catch (err) {
+  await this.prisma.userInsight.create({
+    data: {
+      userId: user.id,
+      submissionId: submission.id,
+      summary: null,
+      themes: [],
+    },
+  });
+
+  console.warn('AI service failed:', err?.message);
+}
+
 
       // Calculate group average (last 7 days)
       const weekAgo = new Date();
