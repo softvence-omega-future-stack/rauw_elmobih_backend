@@ -23,9 +23,6 @@ import { SubmitAssessmentDto } from 'src/submissions/dto/submit-assessment.dto';
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
-  /**
-   * Get device ID from request (helper method)
-   */
   private getDeviceId(
     req: Request,
     userAgent: string,
@@ -149,6 +146,30 @@ export class UsersController {
         },
         HttpStatus.BAD_REQUEST,
       );
+    }
+  }
+
+
+
+
+  @Get('all')
+  async getAllUsers() {
+    try {
+      const users = await this.usersService.getAllUsers();
+
+      return {
+        success: true,
+        data: users,
+        count: users.length,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Failed to fetch users',
+        error: 'FETCH_USERS_FAILED',
+        timestamp: new Date().toISOString(),
+      });
     }
   }
 

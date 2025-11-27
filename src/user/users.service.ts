@@ -379,6 +379,30 @@ export class UsersService {
     }
   }
 
+
+
+
+  async getAllUsers() {
+  return this.prisma.user.findMany({
+    select: {
+      id: true,
+      deviceId: true,
+      language: true,
+      ageGroup: true,
+      createdAt: true,
+      lastSeenAt: true,
+      _count: {
+        select: {
+          submissions: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+}
+
   async deleteUser(userId: string) {
     // Check if user exists
     const user = await this.prisma.user.findUnique({ where: { id: userId } });

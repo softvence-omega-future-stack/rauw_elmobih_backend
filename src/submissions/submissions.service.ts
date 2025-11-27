@@ -62,6 +62,74 @@ export class SubmissionsService {
     }
   }
 
+async getTodaySubmission(userId: string) {
+
+  const now = new Date()
+
+  const startOfDayUTC = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    0, 0, 0, 0
+  ))
+
+  const endOfDayUTC = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    23, 59, 59, 999
+  ))
+
+  const submission = await this.prisma.submission.findFirst({
+    where: {
+      userId,
+      submittedAt: {
+        gte: startOfDayUTC,
+        lte: endOfDayUTC
+      }
+    },
+    orderBy: {
+      submittedAt: 'desc'
+    }
+  })
+
+  const todayUTC = now.toISOString().split('T')[0]
+
+  if (!submission) {
+    return {
+      userId,
+      date: todayUTC,
+      submitted: false,
+      submission: null
+    }
+  }
+
+  const formattedResponses = Object.entries(
+    submission.responses as Record<string, number>
+  ).map(([key, value]) => ({
+    key,
+    question: questionLabels[key] || key,
+    value,
+    answer: optionLabels[value] || "Unknown"
+  }))
+
+  return {
+    userId,
+    date: todayUTC,
+    submitted: true,
+    submission: {
+      id: submission.id,
+      score: submission.score,
+      colorLevel: submission.colorLevel,
+      language: submission.language,
+      ageGroup: submission.ageGroup,
+      submittedAt: submission.submittedAt,
+      responses: formattedResponses
+    }
+  }
+}
+  
+
   //! Skip for Now
   async getSubmissionsGroupedByUser(page: number = 1, limit: number = 10) {
     try {
@@ -273,288 +341,288 @@ export class SubmissionsService {
   }
 
   // Ai summary integrated
-  async getAllSubmissionsWithAi(page: number = 1, limit: number = 10) {
-    try {
-      const skip = (page - 1) * limit;
+  // async getAllSubmissionsWithAi(page: number = 1, limit: number = 10) {
+  //   try {
+  //     const skip = (page - 1) * limit;
 
-      const [submissions, total] = await Promise.all([
-        this.prisma.submission.findMany({
-          select: {
-            id: true,
-            userId: true,
-            ipHash: true,
-            responses: true,
-            score: true,
-            colorLevel: true,
-            language: true,
-            ageGroup: true,
-            userAgent: true,
-            submittedAt: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-          orderBy: { submittedAt: 'desc' },
-          skip,
-          take: limit,
-        }),
-        this.prisma.submission.count(),
-      ]);
-      // Process each submission with AI summary
-      const submissionsWithAi = await Promise.all(
-        submissions.map(async (sub) => {
-          // Map question labels
-          const formatted = {
-            ...sub,
-            responses: Object.entries(
-              sub.responses as Record<string, number>,
-            ).map(([key, value]) => ({
-              questionKey: key,
-              question: questionLabels[key] || key,
-              answerText: optionLabels[value as number] || 'Unknown',
-            })),
-          };
-          // Safe AI call
-          try {
-            const ai = await this.aiSummaryService.getSummary(sub.userId);
+  //     const [submissions, total] = await Promise.all([
+  //       this.prisma.submission.findMany({
+  //         select: {
+  //           id: true,
+  //           userId: true,
+  //           ipHash: true,
+  //           responses: true,
+  //           score: true,
+  //           colorLevel: true,
+  //           language: true,
+  //           ageGroup: true,
+  //           userAgent: true,
+  //           submittedAt: true,
+  //           createdAt: true,
+  //           updatedAt: true,
+  //         },
+  //         orderBy: { submittedAt: 'desc' },
+  //         skip,
+  //         take: limit,
+  //       }),
+  //       this.prisma.submission.count(),
+  //     ]);
+  //     // Process each submission with AI summary
+  //     const submissionsWithAi = await Promise.all(
+  //       submissions.map(async (sub) => {
+  //         // Map question labels
+  //         const formatted = {
+  //           ...sub,
+  //           responses: Object.entries(
+  //             sub.responses as Record<string, number>,
+  //           ).map(([key, value]) => ({
+  //             questionKey: key,
+  //             question: questionLabels[key] || key,
+  //             answerText: optionLabels[value as number] || 'Unknown',
+  //           })),
+  //         };
+  //         // Safe AI call
+  //         try {
+  //           const ai = await this.aiSummaryService.getSummary(sub.userId);
 
-            return {
-              ...formatted,
-              aiSummary: ai,
-              aiError: null,
-            };
-          } catch (e) {
-            return {
-              ...formatted,
-              aiSummary: null,
-              aiError: 'AI summary unavailable',
-            };
-          }
-        }),
-      );
+  //           return {
+  //             ...formatted,
+  //             aiSummary: ai,
+  //             aiError: null,
+  //           };
+  //         } catch (e) {
+  //           return {
+  //             ...formatted,
+  //             aiSummary: null,
+  //             aiError: 'AI summary unavailable',
+  //           };
+  //         }
+  //       }),
+  //     );
 
-      return successResponse(
-        {
-          submissions: submissionsWithAi,
-          total,
-          pagination: {
-            page,
-            limit,
-            totalPages: Math.ceil(total / limit),
-            hasMore: page < Math.ceil(total / limit),
-          },
-        },
-        'All submissions with AI summary retrieved',
-      );
-    } catch (error) {
-      return errorResponse(
-        error.message || 'Something went wrong',
-        'Failed to fetch submissions with AI',
-      );
-    }
-  }
+  //     return successResponse(
+  //       {
+  //         submissions: submissionsWithAi,
+  //         total,
+  //         pagination: {
+  //           page,
+  //           limit,
+  //           totalPages: Math.ceil(total / limit),
+  //           hasMore: page < Math.ceil(total / limit),
+  //         },
+  //       },
+  //       'All submissions with AI summary retrieved',
+  //     );
+  //   } catch (error) {
+  //     return errorResponse(
+  //       error.message || 'Something went wrong',
+  //       'Failed to fetch submissions with AI',
+  //     );
+  //   }
+  // }
 
-  async getSubmissionStats(filters: {
-    dateRange?: string;
-    language?: string;
-    ageGroup?: string;
-    colorLevel?: string;
-    minScore?: number;
-    maxScore?: number;
-  }) {
-    try {
-      const {
-        dateRange,
-        language,
-        ageGroup,
-        colorLevel,
-        minScore = 0,
-        maxScore = 100,
-      } = filters;
+  // async getSubmissionStats(filters: {
+  //   dateRange?: string;
+  //   language?: string;
+  //   ageGroup?: string;
+  //   colorLevel?: string;
+  //   minScore?: number;
+  //   maxScore?: number;
+  // }) {
+  //   try {
+  //     const {
+  //       dateRange,
+  //       language,
+  //       ageGroup,
+  //       colorLevel,
+  //       minScore = 0,
+  //       maxScore = 100,
+  //     } = filters;
 
-      const now = new Date();
+  //     const now = new Date();
 
-      // DATE RANGE MAP
+  //     // DATE RANGE MAP
 
-      const ranges: Record<string, number> = {
-        last_30_days: 30,
-        last_15_days: 15,
-        last_10_days: 10,
-        last_7_days: 7,
-        yesterday: 1,
-        last_2_month: 60,
-        last_3_month: 90,
-        last_6_month: 180,
-        last_1_year: 365,
-      };
+  //     const ranges: Record<string, number> = {
+  //       last_30_days: 30,
+  //       last_15_days: 15,
+  //       last_10_days: 10,
+  //       last_7_days: 7,
+  //       yesterday: 1,
+  //       last_2_month: 60,
+  //       last_3_month: 90,
+  //       last_6_month: 180,
+  //       last_1_year: 365,
+  //     };
 
-      const where: any = {
-        score: { gte: minScore, lte: maxScore },
-      };
+  //     const where: any = {
+  //       score: { gte: minScore, lte: maxScore },
+  //     };
 
-      // CURRENT RANGE FILTER
+  //     // CURRENT RANGE FILTER
 
-      if (dateRange && ranges[dateRange]) {
-        const days = ranges[dateRange];
+  //     if (dateRange && ranges[dateRange]) {
+  //       const days = ranges[dateRange];
 
-        const from = new Date();
-        from.setDate(now.getDate() - days);
+  //       const from = new Date();
+  //       from.setDate(now.getDate() - days);
 
-        where.submittedAt = { gte: from };
-      }
+  //       where.submittedAt = { gte: from };
+  //     }
 
-      if (language && language !== 'ALL') where.language = language;
-      if (ageGroup && ageGroup !== 'ALL') where.ageGroup = ageGroup;
-      if (colorLevel && colorLevel !== 'ALL') where.colorLevel = colorLevel;
+  //     if (language && language !== 'ALL') where.language = language;
+  //     if (ageGroup && ageGroup !== 'ALL') where.ageGroup = ageGroup;
+  //     if (colorLevel && colorLevel !== 'ALL') where.colorLevel = colorLevel;
 
-      // FETCH CURRENT SUBMISSIONS
+  //     // FETCH CURRENT SUBMISSIONS
 
-      const submissions = await this.prisma.submission.findMany({
-        where,
-        select: {
-          id: true,
-          userId: true,
-          score: true,
-          submittedAt: true,
-          responses: true,
-        },
-        orderBy: { submittedAt: 'desc' },
-      });
+  //     const submissions = await this.prisma.submission.findMany({
+  //       where,
+  //       select: {
+  //         id: true,
+  //         userId: true,
+  //         score: true,
+  //         submittedAt: true,
+  //         responses: true,
+  //       },
+  //       orderBy: { submittedAt: 'desc' },
+  //     });
 
-      const total = submissions.length;
+  //     const total = submissions.length;
 
-      if (total === 0) {
-        return successResponse(
-          {
-            total: 0,
-            totalChangePercent: 0,
-            anonymousCheckins: 0,
-            anonymousCheckinsPercent: 0,
+  //     if (total === 0) {
+  //       return successResponse(
+  //         {
+  //           total: 0,
+  //           totalChangePercent: 0,
+  //           anonymousCheckins: 0,
+  //           anonymousCheckinsPercent: 0,
 
-            avgScore: 0,
-            avgScoreChange: 0,
+  //           avgScore: 0,
+  //           avgScoreChange: 0,
 
-            lowWellBeingPercentage: 0,
-            lowWellBeingChange: 0,
+  //           lowWellBeingPercentage: 0,
+  //           lowWellBeingChange: 0,
 
-            topThemes: [],
-            topThemesCount: 0,
-            otherThemesCount: 0,
-            themeCategories: [],
-          },
-          'Stats calculated successfully (empty dataset)',
-        );
-      }
+  //           topThemes: [],
+  //           topThemesCount: 0,
+  //           otherThemesCount: 0,
+  //           themeCategories: [],
+  //         },
+  //         'Stats calculated successfully (empty dataset)',
+  //       );
+  //     }
 
-      const avgScore = submissions.reduce((sum, s) => sum + s.score, 0) / total;
+  //     const avgScore = submissions.reduce((sum, s) => sum + s.score, 0) / total;
 
-      const lowCount = submissions.filter((s) => s.score < 50).length;
-      const lowWellBeingPercentage = Math.round((lowCount / total) * 100);
+  //     const lowCount = submissions.filter((s) => s.score < 50).length;
+  //     const lowWellBeingPercentage = Math.round((lowCount / total) * 100);
 
-      const aiSummaries = await Promise.all(
-        submissions.map(async (sub) => {
-          try {
-            return await this.aiSummaryService.getSummary(sub.userId);
-          } catch {
-            return null;
-          }
-        }),
-      );
+  //     const aiSummaries = await Promise.all(
+  //       submissions.map(async (sub) => {
+  //         try {
+  //           return await this.aiSummaryService.getSummary(sub.userId);
+  //         } catch {
+  //           return null;
+  //         }
+  //       }),
+  //     );
 
-      const themeCounts: Record<string, number> = {};
+  //     const themeCounts: Record<string, number> = {};
 
-      aiSummaries
-        .filter((x) => x && x.themes)
-        .forEach((summary) => {
-          summary.themes.forEach((t: string) => {
-            themeCounts[t] = (themeCounts[t] || 0) + 1;
-          });
-        });
+  //     aiSummaries
+  //       .filter((x) => x && x.themes)
+  //       .forEach((summary) => {
+  //         summary.themes.forEach((t: string) => {
+  //           themeCounts[t] = (themeCounts[t] || 0) + 1;
+  //         });
+  //       });
 
-      const themeCategories = Object.entries(themeCounts).map(
-        ([theme, count]) => ({
-          theme,
-          count,
-        }),
-      );
+  //     const themeCategories = Object.entries(themeCounts).map(
+  //       ([theme, count]) => ({
+  //         theme,
+  //         count,
+  //       }),
+  //     );
 
-      const topThemes = themeCategories
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 3);
+  //     const topThemes = themeCategories
+  //       .sort((a, b) => b.count - a.count)
+  //       .slice(0, 3);
 
-      // PREVIOUS DATE RANGE
+  //     // PREVIOUS DATE RANGE
 
-      let previousWhere = { ...where };
+  //     let previousWhere = { ...where };
 
-      if (dateRange && ranges[dateRange]) {
-        const days = ranges[dateRange];
+  //     if (dateRange && ranges[dateRange]) {
+  //       const days = ranges[dateRange];
 
-        const prevFrom = new Date();
-        prevFrom.setDate(now.getDate() - days * 2);
+  //       const prevFrom = new Date();
+  //       prevFrom.setDate(now.getDate() - days * 2);
 
-        const prevTo = new Date();
-        prevTo.setDate(now.getDate() - days);
+  //       const prevTo = new Date();
+  //       prevTo.setDate(now.getDate() - days);
 
-        previousWhere.submittedAt = {
-          gte: prevFrom,
-          lte: prevTo,
-        };
-      }
+  //       previousWhere.submittedAt = {
+  //         gte: prevFrom,
+  //         lte: prevTo,
+  //       };
+  //     }
 
-      const previousSubs = await this.prisma.submission.findMany({
-        where: previousWhere,
-        select: { score: true },
-      });
+  //     const previousSubs = await this.prisma.submission.findMany({
+  //       where: previousWhere,
+  //       select: { score: true },
+  //     });
 
-      // PREVIOUS METRICS
+  //     // PREVIOUS METRICS
 
-      const prevTotal = previousSubs.length;
+  //     const prevTotal = previousSubs.length;
 
-      const prevAvg =
-        prevTotal > 0
-          ? previousSubs.reduce((a, b) => a + b.score, 0) / prevTotal
-          : 0;
+  //     const prevAvg =
+  //       prevTotal > 0
+  //         ? previousSubs.reduce((a, b) => a + b.score, 0) / prevTotal
+  //         : 0;
 
-      const prevLowCount = previousSubs.filter((s) => s.score < 50).length;
+  //     const prevLowCount = previousSubs.filter((s) => s.score < 50).length;
 
-      const prevLowPercent =
-        prevTotal > 0 ? Math.round((prevLowCount / prevTotal) * 100) : 0;
+  //     const prevLowPercent =
+  //       prevTotal > 0 ? Math.round((prevLowCount / prevTotal) * 100) : 0;
 
-      const totalChangePercent =
-        prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : 0;
+  //     const totalChangePercent =
+  //       prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : 0;
 
-      const avgScoreChange = Math.round(avgScore - prevAvg);
+  //     const avgScoreChange = Math.round(avgScore - prevAvg);
 
-      const lowWellBeingChange = lowWellBeingPercentage - prevLowPercent;
+  //     const lowWellBeingChange = lowWellBeingPercentage - prevLowPercent;
 
-      return successResponse(
-        {
-          total,
-          totalChangePercent,
+  //     return successResponse(
+  //       {
+  //         total,
+  //         totalChangePercent,
 
-          anonymousCheckins: total, // all submissions considered anonymous
-          anonymousCheckinsPercent: totalChangePercent,
+  //         anonymousCheckins: total, // all submissions considered anonymous
+  //         anonymousCheckinsPercent: totalChangePercent,
 
-          avgScore: Math.round(avgScore),
-          avgScoreChange,
+  //         avgScore: Math.round(avgScore),
+  //         avgScoreChange,
 
-          lowWellBeingPercentage,
-          lowWellBeingChange,
+  //         lowWellBeingPercentage,
+  //         lowWellBeingChange,
 
-          topThemes,
-          topThemesCount: topThemes.length,
-          otherThemesCount: themeCategories.length - topThemes.length,
+  //         topThemes,
+  //         topThemesCount: topThemes.length,
+  //         otherThemesCount: themeCategories.length - topThemes.length,
 
-          themeCategories,
-        },
-        'Submission statistics retrieved successfully',
-      );
-    } catch (error) {
-      return errorResponse(
-        error.message || 'Failed to calculate stats',
-        'Error fetching submission stats',
-      );
-    }
-  }
+  //         themeCategories,
+  //       },
+  //       'Submission statistics retrieved successfully',
+  //     );
+  //   } catch (error) {
+  //     return errorResponse(
+  //       error.message || 'Failed to calculate stats',
+  //       'Error fetching submission stats',
+  //     );
+  //   }
+  // }
 
   // chart
   async getScoreDistributionByLanguage() {

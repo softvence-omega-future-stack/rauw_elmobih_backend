@@ -36,14 +36,22 @@ export class SubmissionsController {
     }
   }
 
-  @Get('all-with-ai')
-  getAllWithAi(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
-  ) {
-    
-    return this.submissionsService.getAllSubmissionsWithAi(+page, +limit);
+  @Get('today/:userId')
+async getToday(@Param('userId') userId: string) {
+  return {
+    success: true,
+    data: await this.submissionsService.getTodaySubmission(userId)
   }
+}
+
+  // @Get('all-with-ai')
+  // getAllWithAi(
+  //   @Query('page') page: number = 1,
+  //   @Query('limit') limit: number = 10,
+  // ) {
+    
+  //   return this.submissionsService.getAllSubmissionsWithAi(+page, +limit);
+  // }
 
   @Get('by-users')
   async getSubmissionsGroupedByUser(
@@ -92,17 +100,17 @@ export class SubmissionsController {
     }
   }
 
-  @Get('stats')
-  async getStats(@Query() query: SubmissionStatsQueryDto) {
-    return this.submissionsService.getSubmissionStats({
-      dateRange: query.dateRange,
-      language: query.language,
-      ageGroup: query.ageGroup,
-      colorLevel: query.colorLevel,
-      minScore: query.minScore ? Number(query.minScore) : undefined,
-      maxScore: query.maxScore ? Number(query.maxScore) : undefined,
-    });
-  }
+  // @Get('stats')
+  // async getStats(@Query() query: SubmissionStatsQueryDto) {
+  //   return this.submissionsService.getSubmissionStats({
+  //     dateRange: query.dateRange,
+  //     language: query.language,
+  //     ageGroup: query.ageGroup,
+  //     colorLevel: query.colorLevel,
+  //     minScore: query.minScore ? Number(query.minScore) : undefined,
+  //     maxScore: query.maxScore ? Number(query.maxScore) : undefined,
+  //   });
+  // }
 
   // chart
   @Get('chart/score-by-language')
