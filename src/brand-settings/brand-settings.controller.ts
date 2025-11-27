@@ -71,8 +71,6 @@ export class BrandSettingsController {
         };
       }
 
-      // console.log("filename", file)
-
       // Attach file if uploaded
       if (file) {
         dto.logo = `/uploads/${file.filename}`;

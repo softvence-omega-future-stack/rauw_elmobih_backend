@@ -15,45 +15,29 @@ import { SubmissionResult } from 'src/common/interface/submission-result';
 export class UsersService {
   constructor(
     private prisma: PrismaService,
-    private rateLimit: RateLimitingService, // Make sure this is properly injected
+    private rateLimit: RateLimitingService, 
   ) {}
 
-  /**
-   * Extract device ID from request headers with fallback to generation
-   */
   extractDeviceId(
     headers: Record<string, string>,
     ip: string,
     userAgent: string,
   ): string {
-    // Try to get from headers first
-    const headerDeviceId =
-      headers['x-device-id'] || headers['device-id'] || headers['x-client-id'];
+    // 1. Use frontend device ID if provided
+    const deviceId = headers['x-device-id'];
 
-    console.log('=== DEVICE ID EXTRACTION ===');
-    console.log('Header Device ID:', headerDeviceId || 'Not found');
-    console.log(
-      'Header Valid:',
-      headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId),
-    );
-
-    if (headerDeviceId && DeviceUtils.isValidDeviceId(headerDeviceId)) {
-      console.log('Using header device ID');
-      return headerDeviceId;
+    if (deviceId && DeviceUtils.isValidDeviceId(deviceId)) {
+      return deviceId;
     }
 
-    // Fallback to generated device ID
-    console.log('Generating new device ID from IP and User-Agent');
-    const generatedId = DeviceUtils.generateDeviceId(ip, userAgent);
-    console.log('Generated Device ID:', generatedId);
-    console.log('============================');
+    // 2. Otherwise generate a simple one
+    // console.log('No deviceId sent from client, generating new one...');
+    const newDeviceId = DeviceUtils.generateDeviceId(ip, userAgent);
 
-    return generatedId;
+    // console.log('Generated device ID:', newDeviceId);
+    return newDeviceId;
   }
 
-  /**
-   * Get or create user with enhanced device ID handling
-   */
   async identifyOrCreate(
     deviceId: string,
     headers: Record<string, string> = {},
@@ -63,7 +47,7 @@ export class UsersService {
     });
 
     const isNew = !user;
-    console.log('User found in DB:', !!user);
+    // console.log('User found in DB:', !!user);
 
     if (!user) {
       user = await this.prisma.user.create({
@@ -91,9 +75,6 @@ export class UsersService {
     return { user, isNew };
   }
 
-  /**
-   * Extract language from Accept-Language header
-   */
   private getLanguageFromHeaders(
     headers: Record<string, string>,
   ): Language | null {
@@ -116,9 +97,6 @@ export class UsersService {
     return languageMap[primaryLang] || null;
   }
 
-  /**
-   * Enhanced identify method for controller use
-   */
   async identifyUser(
     ip: string,
     userAgent: string,
@@ -127,37 +105,37 @@ export class UsersService {
     const deviceId = this.extractDeviceId(headers, ip, userAgent);
 
     //! Debug logs for device identification
-    console.log('=== DEVICE IDENTIFICATION DEBUG ===');
-    console.log('IP:', ip);
-    console.log('User-Agent:', userAgent);
-    console.log(
-      'Headers Device ID:',
-      headers['x-device-id'] || headers['device-id'] || 'Not provided',
-    );
-    console.log('Generated Device ID:', deviceId);
-    console.log(
-      'Accept-Language:',
-      headers['accept-language'] || 'Not provided',
-    );
-    console.log('====================================');
+    // console.log('=== DEVICE IDENTIFICATION DEBUG ===');
+    // console.log('IP:', ip);
+    // console.log('User-Agent:', userAgent);
+    // console.log(
+    //   'Headers Device ID:',
+    //   headers['x-device-id'] || headers['device-id'] || 'Not provided',
+    // );
+    // console.log('Generated Device ID:', deviceId);
+    // console.log(
+    //   'Accept-Language:',
+    //   headers['accept-language'] || 'Not provided',
+    // );
+    // console.log('====================================');
 
     const { user, isNew } = await this.identifyOrCreate(deviceId, headers);
     const stats = await this.getUserStats(user.id, user.createdAt);
 
     //! Log user creation/identification
-    console.log(`User ${isNew ? 'CREATED' : 'FOUND'}:`, {
-      userId: user.id,
-      deviceId: user.deviceId,
-      language: user.language,
-      ageGroup: user.ageGroup,
-      isNew,
-    });
+    // console.log(`User ${isNew ? 'CREATED' : 'FOUND'}:`, {
+    //   userId: user.id,
+    //   deviceId: user.deviceId,
+    //   language: user.language,
+    //   ageGroup: user.ageGroup,
+    //   isNew,
+    // });
 
     return {
       user,
       isNew,
       stats,
-      deviceId, // Return for client storage
+      deviceId, 
     };
   }
 
@@ -208,9 +186,7 @@ export class UsersService {
     };
   }
 
-  /**
-   * Get cooldown status for user
-   */
+
   async getCooldownStatus(userId: string) {
     try {
       // Use the rateLimit service that's already injected
@@ -380,8 +356,6 @@ export class UsersService {
         },
         cooldown: {
           canSubmitAgain: cooldownStatus.canSubmit,
-          nextSubmissionTime: cooldownStatus.nextSubmissionTime,
-          timeRemaining: cooldownStatus.timeRemaining,
         },
       };
     } catch (error) {

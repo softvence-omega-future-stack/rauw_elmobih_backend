@@ -19,7 +19,7 @@ export async function deleteFileFromUploads(filePath: string): Promise<void> {
     for (const fullPath of possiblePaths) {
       try {
         await fsPromises.unlink(fullPath);
-        console.log(`Successfully deleted file: ${fullPath}`);
+        // console.log(`Successfully deleted file: ${fullPath}`);
         deleted = true;
         break;
       } catch (error: any) {
