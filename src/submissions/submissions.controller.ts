@@ -100,17 +100,17 @@ async getToday(@Param('userId') userId: string) {
     }
   }
 
-  // @Get('stats')
-  // async getStats(@Query() query: SubmissionStatsQueryDto) {
-  //   return this.submissionsService.getSubmissionStats({
-  //     dateRange: query.dateRange,
-  //     language: query.language,
-  //     ageGroup: query.ageGroup,
-  //     colorLevel: query.colorLevel,
-  //     minScore: query.minScore ? Number(query.minScore) : undefined,
-  //     maxScore: query.maxScore ? Number(query.maxScore) : undefined,
-  //   });
-  // }
+  @Get('stats')
+  async getStats(@Query() query: SubmissionStatsQueryDto) {
+    return this.submissionsService.getSubmissionStats({
+      dateRange: query.dateRange,
+      language: query.language,
+      ageGroup: query.ageGroup,
+      colorLevel: query.colorLevel,
+      minScore: query.minScore ? Number(query.minScore) : undefined,
+      maxScore: query.maxScore ? Number(query.maxScore) : undefined,
+    });
+  }
 
   // chart
   @Get('chart/score-by-language')

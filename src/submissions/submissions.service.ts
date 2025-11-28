@@ -346,87 +346,6 @@ export class SubmissionsService {
     }
   }
 
-  // Ai summary integrated
-  // async getAllSubmissionsWithAi(page: number = 1, limit: number = 10) {
-  //   try {
-  //     const skip = (page - 1) * limit;
-
-  //     const [submissions, total] = await Promise.all([
-  //       this.prisma.submission.findMany({
-  //         select: {
-  //           id: true,
-  //           userId: true,
-  //           ipHash: true,
-  //           responses: true,
-  //           score: true,
-  //           colorLevel: true,
-  //           language: true,
-  //           ageGroup: true,
-  //           userAgent: true,
-  //           submittedAt: true,
-  //           createdAt: true,
-  //           updatedAt: true,
-  //         },
-  //         orderBy: { submittedAt: 'desc' },
-  //         skip,
-  //         take: limit,
-  //       }),
-  //       this.prisma.submission.count(),
-  //     ]);
-  //     // Process each submission with AI summary
-  //     const submissionsWithAi = await Promise.all(
-  //       submissions.map(async (sub) => {
-  //         // Map question labels
-  //         const formatted = {
-  //           ...sub,
-  //           responses: Object.entries(
-  //             sub.responses as Record<string, number>,
-  //           ).map(([key, value]) => ({
-  //             questionKey: key,
-  //             question: questionLabels[key] || key,
-  //             answerText: optionLabels[value as number] || 'Unknown',
-  //           })),
-  //         };
-  //         // Safe AI call
-  //         try {
-  //           const ai = await this.aiSummaryService.getSummary(sub.userId);
-
-  //           return {
-  //             ...formatted,
-  //             aiSummary: ai,
-  //             aiError: null,
-  //           };
-  //         } catch (e) {
-  //           return {
-  //             ...formatted,
-  //             aiSummary: null,
-  //             aiError: 'AI summary unavailable',
-  //           };
-  //         }
-  //       }),
-  //     );
-
-  //     return successResponse(
-  //       {
-  //         submissions: submissionsWithAi,
-  //         total,
-  //         pagination: {
-  //           page,
-  //           limit,
-  //           totalPages: Math.ceil(total / limit),
-  //           hasMore: page < Math.ceil(total / limit),
-  //         },
-  //       },
-  //       'All submissions with AI summary retrieved',
-  //     );
-  //   } catch (error) {
-  //     return errorResponse(
-  //       error.message || 'Something went wrong',
-  //       'Failed to fetch submissions with AI',
-  //     );
-  //   }
-  // }
-
   async getAllSubmissionsWithAi(page: number = 1, limit: number = 10) {
     try {
       const skip = (page - 1) * limit;
@@ -715,6 +634,225 @@ export class SubmissionsService {
   //     );
   //   }
   // }
+
+  async getSubmissionStats(filters: {
+    dateRange?: string;
+    language?: string;
+    ageGroup?: string;
+    colorLevel?: string;
+    minScore?: number;
+    maxScore?: number;
+  }) {
+    try {
+      const {
+        dateRange,
+        language,
+        ageGroup,
+        colorLevel,
+        minScore = 0,
+        maxScore = 100,
+      } = filters;
+
+      const now = new Date();
+
+      const ranges: Record<string, number> = {
+        last_7_days: 7,
+        last_10_days: 10,
+        last_15_days: 15,
+        last_30_days: 30,
+        yesterday: 1,
+        last_2_month: 60,
+        last_3_month: 90,
+        last_6_month: 180,
+        last_1_year: 365,
+      };
+
+      const where: any = {
+        score: { gte: minScore, lte: maxScore },
+      };
+
+      // Date filter (UTC safe)
+      if (dateRange && ranges[dateRange]) {
+        const days = ranges[dateRange];
+
+        const from = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - days,
+            0,
+            0,
+            0,
+            0,
+          ),
+        );
+
+        where.submittedAt = { gte: from };
+      }
+
+      if (language && language !== 'ALL') where.language = language;
+      if (ageGroup && ageGroup !== 'ALL') where.ageGroup = ageGroup;
+      if (colorLevel && colorLevel !== 'ALL') where.colorLevel = colorLevel;
+
+      /** STEP 1: Fetch submissions */
+      const submissions = await this.prisma.submission.findMany({
+        where,
+        select: {
+          id: true,
+          userId: true,
+          score: true,
+          submittedAt: true,
+        },
+      });
+
+      const total = submissions.length;
+
+      const userIds = [...new Set(submissions.map((s) => s.userId))];
+
+      if (total === 0) {
+        return successResponse(
+          {
+            total: 0,
+            totalChangePercent: 0,
+            anonymousCheckins: 0,
+            anonymousCheckinsPercent: 0,
+            avgScore: 0,
+            avgScoreChange: 0,
+            lowWellBeingPercentage: 0,
+            lowWellBeingChange: 0,
+            topThemes: [],
+            topThemesCount: 0,
+            otherThemesCount: 0,
+            themeCategories: [],
+          },
+          'Empty stats result',
+        );
+      }
+
+      /** STEP 2: Fetch AI summaries from DB */
+      const aiSummaries = await this.prisma.aISummary.findMany({
+        where: {
+          userId: { in: userIds },
+        },
+        select: {
+          themes: true,
+        },
+      });
+
+      /** STEP 3: Metrics */
+      const avgScore = submissions.reduce((sum, s) => sum + s.score, 0) / total;
+
+      const lowCount = submissions.filter((s) => s.score < 50).length;
+      const lowWellBeingPercentage = Math.round((lowCount / total) * 100);
+
+      /** STEP 4: Theme aggregation */
+      const themeCounts: Record<string, number> = {};
+
+      aiSummaries.forEach((summary) => {
+        summary.themes?.forEach((theme) => {
+          themeCounts[theme] = (themeCounts[theme] || 0) + 1;
+        });
+      });
+
+      const themeCategories = Object.entries(themeCounts).map(
+        ([theme, count]) => ({ theme, count }),
+      );
+
+      const topThemes = [...themeCategories]
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+
+      /** STEP 5: Previous period stats */
+      const previousWhere = { ...where };
+
+      if (dateRange && ranges[dateRange]) {
+        const days = ranges[dateRange];
+
+        const prevFrom = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - days * 2,
+            0,
+            0,
+            0,
+            0,
+          ),
+        );
+
+        const prevTo = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - days,
+            0,
+            0,
+            0,
+            0,
+          ),
+        );
+
+        previousWhere.submittedAt = {
+          gte: prevFrom,
+          lte: prevTo,
+        };
+      }
+
+      const previousSubs = await this.prisma.submission.findMany({
+        where: previousWhere,
+        select: { score: true },
+      });
+
+      const prevTotal = previousSubs.length;
+
+      const prevAvg =
+        prevTotal > 0
+          ? previousSubs.reduce((a, b) => a + b.score, 0) / prevTotal
+          : 0;
+
+      const prevLowCount = previousSubs.filter((s) => s.score < 50).length;
+
+      const prevLowPercent =
+        prevTotal > 0 ? Math.round((prevLowCount / prevTotal) * 100) : 0;
+
+      const totalChangePercent =
+        prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : 0;
+
+      const avgScoreChange = Math.round(avgScore - prevAvg);
+      const lowWellBeingChange = lowWellBeingPercentage - prevLowPercent;
+
+      /** FINAL RESPONSE */
+      return successResponse(
+        {
+          total,
+          totalChangePercent,
+
+          anonymousCheckins: total,
+          anonymousCheckinsPercent: totalChangePercent,
+
+          avgScore: Math.round(avgScore),
+          avgScoreChange,
+
+          lowWellBeingPercentage,
+          lowWellBeingChange,
+
+          topThemes,
+          topThemesCount: topThemes.length,
+          otherThemesCount: themeCategories.length - topThemes.length,
+
+          themeCategories,
+        },
+        'Submission statistics retrieved successfully',
+      );
+    } catch (error) {
+      console.error(error);
+
+      return errorResponse(
+        error.message || 'Failed to calculate stats',
+        'Error fetching submission stats',
+      );
+    }
+  }
 
   // chart
   async getScoreDistributionByLanguage() {
