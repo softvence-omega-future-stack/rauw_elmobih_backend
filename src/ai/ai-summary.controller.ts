@@ -5,15 +5,12 @@ import { AiSummaryService } from './ai-summary.service';
 export class AiSummaryController {
   constructor(private readonly aiSummaryService: AiSummaryService) {}
 
-@Post('save-summary')
-async saveSummary(@Body() body: {
-  userId: string;
-  summary: string;
-  themes: string[];
-}) {
-  return await this.aiSummaryService.saveSummary(body);
-}
-
+  @Post('save-summary')
+  async saveSummary(
+    @Body() body: { userId: string; summary: string; themes: string[] },
+  ) {
+    return await this.aiSummaryService.saveSummary(body);
+  }
 
   @Get('get-all-summaries')
   async getAll() {
