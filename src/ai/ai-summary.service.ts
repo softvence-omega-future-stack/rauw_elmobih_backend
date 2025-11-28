@@ -10,15 +10,7 @@ export class AiSummaryService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
-  ) {
-    const url = this.config.get<string>('AI_SUMMARY_API');
-
-    if (!url) {
-      throw new Error('AI_SUMMARY_API is missing in .env');
-    }
-
-    this.baseUrl = url;
-  }
+  ) {}
 
   async saveSummary(data: {
     userId: string;
