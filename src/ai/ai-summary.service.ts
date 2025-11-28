@@ -1,4 +1,4 @@
-import { Injectable, HttpException } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from 'prisma/prisma.service';
@@ -20,19 +20,26 @@ export class AiSummaryService {
     this.baseUrl = url;
   }
 
-  async getAndStoreSummary(userId: string) {
+  async saveSummary(data: {
+    userId: string;
+    summary: string;
+    themes: string[];
+  }) {
     try {
-      const response = await axios.post(this.baseUrl, {
-        user_id: userId,
+      // Optional: block duplicate summaries for same user
+      const existing = await this.prisma.aISummary.findFirst({
+        where: { userId: data.userId },
       });
 
-      const { summary, themes } = response.data;
+      if (existing) {
+        return existing;
+      }
 
       const savedSummary = await this.prisma.aISummary.create({
         data: {
-          userId,
-          summary,
-          themes,
+          userId: data.userId,
+          summary: data.summary,
+          themes: data.themes,
         },
       });
 
@@ -40,8 +47,8 @@ export class AiSummaryService {
     } catch (error) {
       console.error(error);
       throw new HttpException(
-        `Failed to fetch or save AI summary: ${error.message}`,
-        500,
+        'Failed to save AI summary',
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
