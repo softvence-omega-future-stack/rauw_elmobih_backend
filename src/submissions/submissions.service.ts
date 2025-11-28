@@ -62,73 +62,81 @@ export class SubmissionsService {
     }
   }
 
-async getTodaySubmission(userId: string) {
+  async getTodaySubmission(userId: string) {
+    const now = new Date();
 
-  const now = new Date()
+    const startOfDayUTC = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
 
-  const startOfDayUTC = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-    0, 0, 0, 0
-  ))
+    const endOfDayUTC = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
+    );
 
-  const endOfDayUTC = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-    23, 59, 59, 999
-  ))
+    const submission = await this.prisma.submission.findFirst({
+      where: {
+        userId,
+        submittedAt: {
+          gte: startOfDayUTC,
+          lte: endOfDayUTC,
+        },
+      },
+      orderBy: {
+        submittedAt: 'desc',
+      },
+    });
 
-  const submission = await this.prisma.submission.findFirst({
-    where: {
-      userId,
-      submittedAt: {
-        gte: startOfDayUTC,
-        lte: endOfDayUTC
-      }
-    },
-    orderBy: {
-      submittedAt: 'desc'
+    const todayUTC = now.toISOString().split('T')[0];
+
+    if (!submission) {
+      return {
+        userId,
+        date: todayUTC,
+        submitted: false,
+        submission: null,
+      };
     }
-  })
 
-  const todayUTC = now.toISOString().split('T')[0]
+    const formattedResponses = Object.entries(
+      submission.responses as Record<string, number>,
+    ).map(([key, value]) => ({
+      key,
+      question: questionLabels[key] || key,
+      value,
+      answer: optionLabels[value] || 'Unknown',
+    }));
 
-  if (!submission) {
     return {
       userId,
       date: todayUTC,
-      submitted: false,
-      submission: null
-    }
+      submitted: true,
+      submission: {
+        id: submission.id,
+        score: submission.score,
+        colorLevel: submission.colorLevel,
+        language: submission.language,
+        ageGroup: submission.ageGroup,
+        submittedAt: submission.submittedAt,
+        responses: formattedResponses,
+      },
+    };
   }
-
-  const formattedResponses = Object.entries(
-    submission.responses as Record<string, number>
-  ).map(([key, value]) => ({
-    key,
-    question: questionLabels[key] || key,
-    value,
-    answer: optionLabels[value] || "Unknown"
-  }))
-
-  return {
-    userId,
-    date: todayUTC,
-    submitted: true,
-    submission: {
-      id: submission.id,
-      score: submission.score,
-      colorLevel: submission.colorLevel,
-      language: submission.language,
-      ageGroup: submission.ageGroup,
-      submittedAt: submission.submittedAt,
-      responses: formattedResponses
-    }
-  }
-}
-  
 
   //! Skip for Now
   async getSubmissionsGroupedByUser(page: number = 1, limit: number = 10) {
@@ -245,7 +253,6 @@ async getTodaySubmission(userId: string) {
 
   // Ai summary integrated
   async getSubmissionsByUserId(
-    
     userId: string,
     page: number = 1,
     limit: number = 10,
@@ -300,7 +307,6 @@ async getTodaySubmission(userId: string) {
 
           try {
             // const aiSummary = await this.aiSummaryService.getSummary(userId);
-
 
             return {
               ...formatted,
@@ -420,6 +426,92 @@ async getTodaySubmission(userId: string) {
   //     );
   //   }
   // }
+
+  async getAllSubmissionsWithAi(page: number = 1, limit: number = 10) {
+    try {
+      const skip = (page - 1) * limit;
+
+      const [submissions, total] = await Promise.all([
+        this.prisma.submission.findMany({
+          include: {
+            user: {
+              select: {
+                id: true,
+              },
+            },
+          },
+          orderBy: { submittedAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.submission.count(),
+      ]);
+
+      const submissionsWithAi = await Promise.all(
+        submissions.map(async (sub) => {
+          // Fetch AI summary from DB
+          const aiSummary = await this.prisma.aISummary.findFirst({
+            where: { userId: sub.userId },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          });
+
+          return {
+            id: sub.id,
+            userId: sub.userId,
+            ipHash: sub.ipHash,
+            score: sub.score,
+            colorLevel: sub.colorLevel,
+            language: sub.language,
+            ageGroup: sub.ageGroup,
+            userAgent: sub.userAgent,
+            submittedAt: sub.submittedAt,
+            createdAt: sub.createdAt,
+            updatedAt: sub.updatedAt,
+
+            responses: Object.entries(
+              sub.responses as Record<string, number>,
+            ).map(([key, value]) => ({
+              questionKey: key,
+              question: questionLabels[key] || key,
+              answerValue: value,
+              answerText: optionLabels[value] || 'Unknown',
+            })),
+
+            aiSummary: aiSummary
+              ? {
+                  summary: aiSummary.summary,
+                  themes: aiSummary.themes,
+                  createdAt: aiSummary.createdAt,
+                }
+              : null,
+          };
+        }),
+      );
+
+      return successResponse(
+        {
+          submissions: submissionsWithAi,
+          total,
+          pagination: {
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+            hasMore: page < Math.ceil(total / limit),
+          },
+        },
+        'All submissions with AI summary fetched from DB',
+      );
+    } catch (error) {
+      console.error(error);
+
+      return errorResponse(
+        error.message || 'Something went wrong',
+        'Failed to fetch submissions with AI summaries',
+      );
+    }
+  }
 
   // async getSubmissionStats(filters: {
   //   dateRange?: string;

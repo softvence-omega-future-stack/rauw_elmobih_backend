@@ -44,14 +44,14 @@ async getToday(@Param('userId') userId: string) {
   }
 }
 
-  // @Get('all-with-ai')
-  // getAllWithAi(
-  //   @Query('page') page: number = 1,
-  //   @Query('limit') limit: number = 10,
-  // ) {
+  @Get('all-with-ai')
+  getAllWithAi(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
     
-  //   return this.submissionsService.getAllSubmissionsWithAi(+page, +limit);
-  // }
+    return this.submissionsService.getAllSubmissionsWithAi(+page, +limit);
+  }
 
   @Get('by-users')
   async getSubmissionsGroupedByUser(
