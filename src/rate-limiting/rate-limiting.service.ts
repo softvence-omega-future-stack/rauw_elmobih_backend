@@ -8,61 +8,43 @@ export class RateLimitingService {
 
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Check if user can submit based on 24-hour cooldown
-   */
-  async canSubmit(deviceId: string, ip: string): Promise<{ 
-    canSubmit: boolean; 
-    nextSubmissionTime?: Date;
-    lastSubmission?: Date;
-    message?: string;
-  }> {
-    try {
-      const ipHash = DeviceUtils.hashIp(ip);
-      
-      // Find the most recent submission for this device
-      const lastSubmission = await this.prisma.submission.findFirst({
-        where: { userId: deviceId }, // Note: deviceId is used as userId in this context
-        orderBy: { submittedAt: 'desc' },
-        select: { submittedAt: true }
-      });
+async canSubmit(userId: string, ip: string) {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
-      if (!lastSubmission) {
-        return { canSubmit: true };
-      }
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
 
-      const now = new Date();
-      const lastSubmissionTime = new Date(lastSubmission.submittedAt);
-      const nextAllowedTime = new Date(lastSubmissionTime);
-      nextAllowedTime.setHours(nextAllowedTime.getHours() + this.SUBMISSION_COOLDOWN_HOURS);
+  const lastSubmission = await this.prisma.submission.findFirst({
+    where: {
+      userId,
+      submittedAt: {
+        gte: todayStart,
+        lte: todayEnd,
+      },
+    },
+    orderBy: { submittedAt: 'desc' },
+  });
 
-      if (now < nextAllowedTime) {
-        const timeRemaining = Math.ceil((nextAllowedTime.getTime() - now.getTime()) / (1000 * 60)); // in minutes
-        
-        let timeMessage: string;
-        if (timeRemaining > 60) {
-          const hours = Math.floor(timeRemaining / 60);
-          const minutes = timeRemaining % 60;
-          timeMessage = `${hours}h ${minutes}m`;
-        } else {
-          timeMessage = `${timeRemaining}m`;
-        }
+  if (lastSubmission) {
+    const nextSubmissionTime = new Date();
+    nextSubmissionTime.setHours(24, 0, 0, 0); // Tomorrow at 12:00 AM
 
-        return {
-          canSubmit: false,
-          nextSubmissionTime: nextAllowedTime,
-          lastSubmission: lastSubmissionTime,
-          message: `You can submit again in ${timeMessage}. Please wait 24 hours between submissions.`
-        };
-      }
-
-      return { canSubmit: true };
-    } catch (error) {
-      console.error('Rate limiting check failed:', error);
-      // Fail open to not block submissions in case of errors
-      return { canSubmit: true };
-    }
+    return {
+      canSubmit: false,
+      message: 'You can only submit once per day.',
+      lastSubmission: lastSubmission.submittedAt,
+      nextSubmissionTime,
+    };
   }
+
+  return {
+    canSubmit: true,
+    message: 'Allowed to submit.',
+    lastSubmission: null,
+    nextSubmissionTime: null,
+  };
+}
 
   /**
    * Record submission timestamp for rate limiting
@@ -81,50 +63,35 @@ export class RateLimitingService {
     }
   }
 
-  /**
-   * Get submission cooldown status for a user
-   */
-  async getCooldownStatus(deviceId: string): Promise<{
-    canSubmit: boolean;
-    nextSubmissionTime?: Date;
-    lastSubmission?: Date;
-    timeRemaining?: string;
-  }> {
-    try {
-      const lastSubmission = await this.prisma.submission.findFirst({
-        where: { userId: deviceId },
-        orderBy: { submittedAt: 'desc' },
-        select: { submittedAt: true }
-      });
+async getCooldownStatus(userId: string) {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
-      if (!lastSubmission) {
-        return { canSubmit: true };
-      }
+  const submission = await this.prisma.submission.findFirst({
+    where: {
+      userId,
+      submittedAt: { gte: todayStart },
+    },
+  });
 
-      const now = new Date();
-      const lastSubmissionTime = new Date(lastSubmission.submittedAt);
-      const nextAllowedTime = new Date(lastSubmissionTime);
-      nextAllowedTime.setHours(nextAllowedTime.getHours() + this.SUBMISSION_COOLDOWN_HOURS);
+  const tomorrow = new Date();
+  tomorrow.setHours(24, 0, 0, 0);
 
-      if (now < nextAllowedTime) {
-        const timeRemainingMs = nextAllowedTime.getTime() - now.getTime();
-        const hours = Math.floor(timeRemainingMs / (1000 * 60 * 60));
-        const minutes = Math.floor((timeRemainingMs % (1000 * 60 * 60)) / (1000 * 60));
-        
-        const timeRemaining = `${hours}h ${minutes}m`;
+  if (submission) {
+    const timeRemaining = tomorrow.getTime() - Date.now();
 
-        return {
-          canSubmit: false,
-          nextSubmissionTime: nextAllowedTime,
-          lastSubmission: lastSubmissionTime,
-          timeRemaining
-        };
-      }
-
-      return { canSubmit: true };
-    } catch (error) {
-      console.error('Failed to get cooldown status:', error);
-      return { canSubmit: true };
-    }
+    return {
+      canSubmit: false,
+      nextSubmissionTime: tomorrow,
+      timeRemaining,
+    };
   }
+
+  return {
+    canSubmit: true,
+    nextSubmissionTime: null,
+    timeRemaining: null,
+  };
+}
+
 }

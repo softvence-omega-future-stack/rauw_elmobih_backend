@@ -62,6 +62,82 @@ export class SubmissionsService {
     }
   }
 
+  async getTodaySubmission(userId: string) {
+    const now = new Date();
+
+    const startOfDayUTC = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
+
+    const endOfDayUTC = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
+    );
+
+    const submission = await this.prisma.submission.findFirst({
+      where: {
+        userId,
+        submittedAt: {
+          gte: startOfDayUTC,
+          lte: endOfDayUTC,
+        },
+      },
+      orderBy: {
+        submittedAt: 'desc',
+      },
+    });
+
+    const todayUTC = now.toISOString().split('T')[0];
+
+    if (!submission) {
+      return {
+        userId,
+        date: todayUTC,
+        submitted: false,
+        submission: null,
+      };
+    }
+
+    const formattedResponses = Object.entries(
+      submission.responses as Record<string, number>,
+    ).map(([key, value]) => ({
+      key,
+      question: questionLabels[key] || key,
+      value,
+      answer: optionLabels[value] || 'Unknown',
+    }));
+
+    return {
+      userId,
+      date: todayUTC,
+      submitted: true,
+      submission: {
+        id: submission.id,
+        score: submission.score,
+        colorLevel: submission.colorLevel,
+        language: submission.language,
+        ageGroup: submission.ageGroup,
+        submittedAt: submission.submittedAt,
+        responses: formattedResponses,
+      },
+    };
+  }
+
   //! Skip for Now
   async getSubmissionsGroupedByUser(page: number = 1, limit: number = 10) {
     try {
@@ -196,11 +272,9 @@ export class SubmissionsService {
           createdAt: true,
         },
       });
-
       if (!user) {
         return errorResponse('User not found', 'Invalid user ID');
       }
-
       const [submissions, totalSubmissions] = await Promise.all([
         this.prisma.submission.findMany({
           where: { userId },
@@ -232,11 +306,11 @@ export class SubmissionsService {
           };
 
           try {
-            const aiSummary = await this.aiSummaryService.getSummary(userId);
+            // const aiSummary = await this.aiSummaryService.getSummary(userId);
 
             return {
               ...formatted,
-              aiSummary,
+              // aiSummary,
               aiError: null,
             };
           } catch (error) {
@@ -272,26 +346,18 @@ export class SubmissionsService {
     }
   }
 
-  // Ai summary integrated
   async getAllSubmissionsWithAi(page: number = 1, limit: number = 10) {
     try {
       const skip = (page - 1) * limit;
 
       const [submissions, total] = await Promise.all([
         this.prisma.submission.findMany({
-          select: {
-            id: true,
-            userId: true,
-            ipHash: true,
-            responses: true,
-            score: true,
-            colorLevel: true,
-            language: true,
-            ageGroup: true,
-            userAgent: true,
-            submittedAt: true,
-            createdAt: true,
-            updatedAt: true,
+          include: {
+            user: {
+              select: {
+                id: true,
+              },
+            },
           },
           orderBy: { submittedAt: 'desc' },
           skip,
@@ -300,37 +366,46 @@ export class SubmissionsService {
         this.prisma.submission.count(),
       ]);
 
-      // Process each submission with AI summary
       const submissionsWithAi = await Promise.all(
         submissions.map(async (sub) => {
-          // Map question labels
-          const formatted = {
-            ...sub,
+          // Fetch AI summary from DB
+          const aiSummary = await this.prisma.aISummary.findFirst({
+            where: { userId: sub.userId },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          });
+
+          return {
+            id: sub.id,
+            userId: sub.userId,
+            ipHash: sub.ipHash,
+            score: sub.score,
+            colorLevel: sub.colorLevel,
+            language: sub.language,
+            ageGroup: sub.ageGroup,
+            userAgent: sub.userAgent,
+            submittedAt: sub.submittedAt,
+            createdAt: sub.createdAt,
+            updatedAt: sub.updatedAt,
+
             responses: Object.entries(
               sub.responses as Record<string, number>,
             ).map(([key, value]) => ({
               questionKey: key,
               question: questionLabels[key] || key,
-              answerText: optionLabels[value as number] || 'Unknown',
+              answerValue: value,
+              answerText: optionLabels[value] || 'Unknown',
             })),
+
+            aiSummary: aiSummary
+              ? {
+                  summary: aiSummary.summary,
+                  themes: aiSummary.themes,
+                  createdAt: aiSummary.createdAt,
+                }
+              : null,
           };
-
-          // 🔥 Safe AI call
-          try {
-            const ai = await this.aiSummaryService.getSummary(sub.userId);
-
-            return {
-              ...formatted,
-              aiSummary: ai,
-              aiError: null,
-            };
-          } catch (e) {
-            return {
-              ...formatted,
-              aiSummary: null,
-              aiError: 'AI summary unavailable',
-            };
-          }
         }),
       );
 
@@ -345,15 +420,220 @@ export class SubmissionsService {
             hasMore: page < Math.ceil(total / limit),
           },
         },
-        'All submissions with AI summary retrieved',
+        'All submissions with AI summary fetched from DB',
       );
     } catch (error) {
+      console.error(error);
+
       return errorResponse(
         error.message || 'Something went wrong',
-        'Failed to fetch submissions with AI',
+        'Failed to fetch submissions with AI summaries',
       );
     }
   }
+
+  // async getSubmissionStats(filters: {
+  //   dateRange?: string;
+  //   language?: string;
+  //   ageGroup?: string;
+  //   colorLevel?: string;
+  //   minScore?: number;
+  //   maxScore?: number;
+  // }) {
+  //   try {
+  //     const {
+  //       dateRange,
+  //       language,
+  //       ageGroup,
+  //       colorLevel,
+  //       minScore = 0,
+  //       maxScore = 100,
+  //     } = filters;
+
+  //     const now = new Date();
+
+  //     // DATE RANGE MAP
+
+  //     const ranges: Record<string, number> = {
+  //       last_30_days: 30,
+  //       last_15_days: 15,
+  //       last_10_days: 10,
+  //       last_7_days: 7,
+  //       yesterday: 1,
+  //       last_2_month: 60,
+  //       last_3_month: 90,
+  //       last_6_month: 180,
+  //       last_1_year: 365,
+  //     };
+
+  //     const where: any = {
+  //       score: { gte: minScore, lte: maxScore },
+  //     };
+
+  //     // CURRENT RANGE FILTER
+
+  //     if (dateRange && ranges[dateRange]) {
+  //       const days = ranges[dateRange];
+
+  //       const from = new Date();
+  //       from.setDate(now.getDate() - days);
+
+  //       where.submittedAt = { gte: from };
+  //     }
+
+  //     if (language && language !== 'ALL') where.language = language;
+  //     if (ageGroup && ageGroup !== 'ALL') where.ageGroup = ageGroup;
+  //     if (colorLevel && colorLevel !== 'ALL') where.colorLevel = colorLevel;
+
+  //     // FETCH CURRENT SUBMISSIONS
+
+  //     const submissions = await this.prisma.submission.findMany({
+  //       where,
+  //       select: {
+  //         id: true,
+  //         userId: true,
+  //         score: true,
+  //         submittedAt: true,
+  //         responses: true,
+  //       },
+  //       orderBy: { submittedAt: 'desc' },
+  //     });
+
+  //     const total = submissions.length;
+
+  //     if (total === 0) {
+  //       return successResponse(
+  //         {
+  //           total: 0,
+  //           totalChangePercent: 0,
+  //           anonymousCheckins: 0,
+  //           anonymousCheckinsPercent: 0,
+
+  //           avgScore: 0,
+  //           avgScoreChange: 0,
+
+  //           lowWellBeingPercentage: 0,
+  //           lowWellBeingChange: 0,
+
+  //           topThemes: [],
+  //           topThemesCount: 0,
+  //           otherThemesCount: 0,
+  //           themeCategories: [],
+  //         },
+  //         'Stats calculated successfully (empty dataset)',
+  //       );
+  //     }
+
+  //     const avgScore = submissions.reduce((sum, s) => sum + s.score, 0) / total;
+
+  //     const lowCount = submissions.filter((s) => s.score < 50).length;
+  //     const lowWellBeingPercentage = Math.round((lowCount / total) * 100);
+
+  //     const aiSummaries = await Promise.all(
+  //       submissions.map(async (sub) => {
+  //         try {
+  //           return await this.aiSummaryService.getSummary(sub.userId);
+  //         } catch {
+  //           return null;
+  //         }
+  //       }),
+  //     );
+
+  //     const themeCounts: Record<string, number> = {};
+
+  //     aiSummaries
+  //       .filter((x) => x && x.themes)
+  //       .forEach((summary) => {
+  //         summary.themes.forEach((t: string) => {
+  //           themeCounts[t] = (themeCounts[t] || 0) + 1;
+  //         });
+  //       });
+
+  //     const themeCategories = Object.entries(themeCounts).map(
+  //       ([theme, count]) => ({
+  //         theme,
+  //         count,
+  //       }),
+  //     );
+
+  //     const topThemes = themeCategories
+  //       .sort((a, b) => b.count - a.count)
+  //       .slice(0, 3);
+
+  //     // PREVIOUS DATE RANGE
+
+  //     let previousWhere = { ...where };
+
+  //     if (dateRange && ranges[dateRange]) {
+  //       const days = ranges[dateRange];
+
+  //       const prevFrom = new Date();
+  //       prevFrom.setDate(now.getDate() - days * 2);
+
+  //       const prevTo = new Date();
+  //       prevTo.setDate(now.getDate() - days);
+
+  //       previousWhere.submittedAt = {
+  //         gte: prevFrom,
+  //         lte: prevTo,
+  //       };
+  //     }
+
+  //     const previousSubs = await this.prisma.submission.findMany({
+  //       where: previousWhere,
+  //       select: { score: true },
+  //     });
+
+  //     // PREVIOUS METRICS
+
+  //     const prevTotal = previousSubs.length;
+
+  //     const prevAvg =
+  //       prevTotal > 0
+  //         ? previousSubs.reduce((a, b) => a + b.score, 0) / prevTotal
+  //         : 0;
+
+  //     const prevLowCount = previousSubs.filter((s) => s.score < 50).length;
+
+  //     const prevLowPercent =
+  //       prevTotal > 0 ? Math.round((prevLowCount / prevTotal) * 100) : 0;
+
+  //     const totalChangePercent =
+  //       prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : 0;
+
+  //     const avgScoreChange = Math.round(avgScore - prevAvg);
+
+  //     const lowWellBeingChange = lowWellBeingPercentage - prevLowPercent;
+
+  //     return successResponse(
+  //       {
+  //         total,
+  //         totalChangePercent,
+
+  //         anonymousCheckins: total, // all submissions considered anonymous
+  //         anonymousCheckinsPercent: totalChangePercent,
+
+  //         avgScore: Math.round(avgScore),
+  //         avgScoreChange,
+
+  //         lowWellBeingPercentage,
+  //         lowWellBeingChange,
+
+  //         topThemes,
+  //         topThemesCount: topThemes.length,
+  //         otherThemesCount: themeCategories.length - topThemes.length,
+
+  //         themeCategories,
+  //       },
+  //       'Submission statistics retrieved successfully',
+  //     );
+  //   } catch (error) {
+  //     return errorResponse(
+  //       error.message || 'Failed to calculate stats',
+  //       'Error fetching submission stats',
+  //     );
+  //   }
+  // }
 
   async getSubmissionStats(filters: {
     dateRange?: string;
@@ -375,13 +655,11 @@ export class SubmissionsService {
 
       const now = new Date();
 
-      // DATE RANGE MAP
-
       const ranges: Record<string, number> = {
-        last_30_days: 30,
-        last_15_days: 15,
-        last_10_days: 10,
         last_7_days: 7,
+        last_10_days: 10,
+        last_15_days: 15,
+        last_30_days: 30,
         yesterday: 1,
         last_2_month: 60,
         last_3_month: 90,
@@ -393,13 +671,21 @@ export class SubmissionsService {
         score: { gte: minScore, lte: maxScore },
       };
 
-      // CURRENT RANGE FILTER
-
+      // Date filter (UTC safe)
       if (dateRange && ranges[dateRange]) {
         const days = ranges[dateRange];
 
-        const from = new Date();
-        from.setDate(now.getDate() - days);
+        const from = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - days,
+            0,
+            0,
+            0,
+            0,
+          ),
+        );
 
         where.submittedAt = { gte: from };
       }
@@ -408,8 +694,7 @@ export class SubmissionsService {
       if (ageGroup && ageGroup !== 'ALL') where.ageGroup = ageGroup;
       if (colorLevel && colorLevel !== 'ALL') where.colorLevel = colorLevel;
 
-      // FETCH CURRENT SUBMISSIONS
-
+      /** STEP 1: Fetch submissions */
       const submissions = await this.prisma.submission.findMany({
         where,
         select: {
@@ -417,12 +702,12 @@ export class SubmissionsService {
           userId: true,
           score: true,
           submittedAt: true,
-          responses: true,
         },
-        orderBy: { submittedAt: 'desc' },
       });
 
       const total = submissions.length;
+
+      const userIds = [...new Set(submissions.map((s) => s.userId))];
 
       if (total === 0) {
         return successResponse(
@@ -431,70 +716,81 @@ export class SubmissionsService {
             totalChangePercent: 0,
             anonymousCheckins: 0,
             anonymousCheckinsPercent: 0,
-
             avgScore: 0,
             avgScoreChange: 0,
-
             lowWellBeingPercentage: 0,
             lowWellBeingChange: 0,
-
             topThemes: [],
             topThemesCount: 0,
             otherThemesCount: 0,
             themeCategories: [],
           },
-          'Stats calculated successfully (empty dataset)',
+          'Empty stats result',
         );
       }
 
+      /** STEP 2: Fetch AI summaries from DB */
+      const aiSummaries = await this.prisma.aISummary.findMany({
+        where: {
+          userId: { in: userIds },
+        },
+        select: {
+          themes: true,
+        },
+      });
+
+      /** STEP 3: Metrics */
       const avgScore = submissions.reduce((sum, s) => sum + s.score, 0) / total;
 
       const lowCount = submissions.filter((s) => s.score < 50).length;
       const lowWellBeingPercentage = Math.round((lowCount / total) * 100);
 
-      const aiSummaries = await Promise.all(
-        submissions.map(async (sub) => {
-          try {
-            return await this.aiSummaryService.getSummary(sub.userId);
-          } catch {
-            return null;
-          }
-        }),
-      );
-
+      /** STEP 4: Theme aggregation */
       const themeCounts: Record<string, number> = {};
 
-      aiSummaries
-        .filter((x) => x && x.themes)
-        .forEach((summary) => {
-          summary.themes.forEach((t: string) => {
-            themeCounts[t] = (themeCounts[t] || 0) + 1;
-          });
+      aiSummaries.forEach((summary) => {
+        summary.themes?.forEach((theme) => {
+          themeCounts[theme] = (themeCounts[theme] || 0) + 1;
         });
+      });
 
       const themeCategories = Object.entries(themeCounts).map(
-        ([theme, count]) => ({
-          theme,
-          count,
-        }),
+        ([theme, count]) => ({ theme, count }),
       );
 
-      const topThemes = themeCategories
+      const topThemes = [...themeCategories]
         .sort((a, b) => b.count - a.count)
         .slice(0, 3);
 
-      // PREVIOUS DATE RANGE
-
-      let previousWhere = { ...where };
+      /** STEP 5: Previous period stats */
+      const previousWhere = { ...where };
 
       if (dateRange && ranges[dateRange]) {
         const days = ranges[dateRange];
 
-        const prevFrom = new Date();
-        prevFrom.setDate(now.getDate() - days * 2);
+        const prevFrom = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - days * 2,
+            0,
+            0,
+            0,
+            0,
+          ),
+        );
 
-        const prevTo = new Date();
-        prevTo.setDate(now.getDate() - days);
+        const prevTo = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - days,
+            0,
+            0,
+            0,
+            0,
+          ),
+        );
 
         previousWhere.submittedAt = {
           gte: prevFrom,
@@ -506,8 +802,6 @@ export class SubmissionsService {
         where: previousWhere,
         select: { score: true },
       });
-
-      // PREVIOUS METRICS
 
       const prevTotal = previousSubs.length;
 
@@ -525,15 +819,15 @@ export class SubmissionsService {
         prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : 0;
 
       const avgScoreChange = Math.round(avgScore - prevAvg);
-
       const lowWellBeingChange = lowWellBeingPercentage - prevLowPercent;
 
+      /** FINAL RESPONSE */
       return successResponse(
         {
           total,
           totalChangePercent,
 
-          anonymousCheckins: total, // all submissions considered anonymous
+          anonymousCheckins: total,
           anonymousCheckinsPercent: totalChangePercent,
 
           avgScore: Math.round(avgScore),
@@ -551,6 +845,8 @@ export class SubmissionsService {
         'Submission statistics retrieved successfully',
       );
     } catch (error) {
+      console.error(error);
+
       return errorResponse(
         error.message || 'Failed to calculate stats',
         'Error fetching submission stats',

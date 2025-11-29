@@ -19,17 +19,17 @@ enum TokenType {
 }
 
 enum ColorLevel {
-  RED      
-  ORANGE   
-  GREEN    
+  RED
+  ORANGE
+  GREEN
 }
 
 enum AgeGroup {
-  AGE_12_17   
-  AGE_18_25   
-  AGE_26_40   
-  AGE_41_60   
-  AGE_60_PLUS 
+  AGE_12_17
+  AGE_18_25
+  AGE_26_40
+  AGE_41_60
+  AGE_60_PLUS
 }
 
 enum Language {
@@ -46,138 +46,149 @@ enum OrganizationType {
   MUNICIPALITY
 }
 
-
 // ADMIN & AUTHENTICATION
 model Admin {
-  id                                               String     @id @default(uuid())
-  email                                            String     @unique
-  password          String   // Hashed with bcrypt
-  role                                             Role       @default(ADMIN)
-  isActive                                         Boolean    @default(true)
-  lastLoginAt                                      DateTime?
-  passwordChangedAt                                DateTime?
-  createdAt                                        DateTime   @default(now())
-  updatedAt                                        DateTime   @updatedAt
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String // Hashed with bcrypt
+  role              Role      @default(ADMIN)
+  isActive          Boolean   @default(true)
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   //                                               Relations
-  sessions                                         Session[]
+  sessions Session[]
 
   @@map("admins")
 }
 
 model User {
-  id          String        @id @default(uuid())
-  deviceId    String        @unique
-  language    Language      @default(ENGLISH)
-  ageGroup    AgeGroup?
-  lastSeenAt  DateTime      @default(now())
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id         String    @id @default(uuid())
+  deviceId   String    @unique
+  language   Language  @default(ENGLISH)
+  ageGroup   AgeGroup?
+  lastSeenAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   //          Relations
   submissions Submission[]
+  aiSummaries AISummary[]
 
   @@map("users")
 }
 
 model Session {
-  id                    String     @id @default(uuid())
-  adminId               String
+  id      String @id @default(uuid())
+  adminId String
 
-  accessToken           String     @unique
-  refreshToken          String     @unique
+  accessToken  String @unique
+  refreshToken String @unique
 
-  isActive              Boolean    @default(true)
-  isRevoked             Boolean    @default(false)
+  isActive              Boolean   @default(true)
+  isRevoked             Boolean   @default(false)
   revokedAt             DateTime?
   revokedReason         String?
-  lastActivity          DateTime   @default(now())
+  lastActivity          DateTime  @default(now())
   refreshTokenExpiresAt DateTime
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   //                    Relations
-  admin                 Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
 }
 
-
 // USER SUBMISSIONS (Anonymous)
 model Submission {
-  id                                        String      @id @default(uuid())
-  userId                                    String
-  ipHash                                    String
+  id     String @id @default(uuid())
+  userId String
+  ipHash String
 
-  responses   Json         // WHO-5 answers
-  score                                     Int
-  colorLevel                                ColorLevel
+  responses  Json // WHO-5 answers
+  score      Int
+  colorLevel ColorLevel
 
-  language                                  Language
-  ageGroup                                  AgeGroup
+  language Language
+  ageGroup AgeGroup
 
-  userAgent                                 String?
-  submittedAt                               DateTime    @default(now())
-  createdAt                                 DateTime    @default(now())
-  updatedAt                                 DateTime    @updatedAt
+  userAgent   String?
+  submittedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user                                      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("submissions")
 }
 
-
 // RATE LIMITING
 model RateLimit {
-  id               String     @id @default(uuid())
+  id               String    @id @default(uuid())
   deviceId         String
   ipHash           String
   lastSubmissionAt DateTime
-  submissionCount  Int        @default(1)
-  isBlocked        Boolean    @default(false)
+  submissionCount  Int       @default(1)
+  isBlocked        Boolean   @default(false)
   blockedUntil     DateTime?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@unique([deviceId, ipHash], name: "deviceId_ipHash")
   @@map("rate_limits")
 }
 
-
 // THEMES & APP CONFIG
 model Theme {
-  id        String    @id @default(uuid())
-  name      String    @unique
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("themes")
 }
 
 model OrganizationSettings {
-  id                String            @id @default(uuid())
-  organizationType  OrganizationType  @default(COA)
-  contactEmail      String?
-  phoneNumber       String?
-  name           String?
-  additionalNotes   String? @db.Text
+  id               String           @id @default(uuid())
+  organizationType OrganizationType @default(COA)
+  contactEmail     String?
+  phoneNumber      String?
+  name             String?
+  additionalNotes  String?          @db.Text
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("organization_settings")
 }
 
 model BrandSettings {
-  id           String   @id @default(uuid())
+  id           String  @id @default(uuid())
   primaryColor String?
-  theme        String?  @default("light")  // "light" | "dark"
-  logo         String?  // file path like "/uploads/123.png"
-  name         String?  // optional friendly name (e.g. platform name variant)
+  theme        String? @default("light") // "light" | "dark"
+  logo         String? // file path like "/uploads/123.png"
+  name         String? // optional friendly name (e.g. platform name variant)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("brand_settings")
+}
+
+model AISummary {
+  id        String   @id @default(uuid())
+  userId    String
+  summary   String   @db.Text
+  themes    String[] // Postgres supports string array
+  date      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ai_summaries")
 }

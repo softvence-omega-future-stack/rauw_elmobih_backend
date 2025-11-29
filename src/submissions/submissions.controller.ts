@@ -36,11 +36,20 @@ export class SubmissionsController {
     }
   }
 
+  @Get('today/:userId')
+async getToday(@Param('userId') userId: string) {
+  return {
+    success: true,
+    data: await this.submissionsService.getTodaySubmission(userId)
+  }
+}
+
   @Get('all-with-ai')
   getAllWithAi(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
+    
     return this.submissionsService.getAllSubmissionsWithAi(+page, +limit);
   }
 
