@@ -15,7 +15,7 @@ import { SubmissionResult } from 'src/common/interface/submission-result';
 export class UsersService {
   constructor(
     private prisma: PrismaService,
-    private rateLimit: RateLimitingService, 
+    private rateLimit: RateLimitingService,
   ) {}
 
   extractDeviceId(
@@ -88,6 +88,12 @@ export class UsersService {
       ti: Language.TIGRINYA,
       ru: Language.RUSSIAN,
       en: Language.ENGLISH,
+      fa: Language.FARSI,
+      prs: Language.DARI,
+      so: Language.SOMALI,
+      uk: Language.UKRAINIAN,
+      fr: Language.FRENCH,
+      tr: Language.TURKISH,
     };
 
     const primaryLang = acceptLanguage
@@ -135,7 +141,7 @@ export class UsersService {
       user,
       isNew,
       stats,
-      deviceId, 
+      deviceId,
     };
   }
 
@@ -185,7 +191,6 @@ export class UsersService {
       checkedInToday: checkedInLast24h, // This is what you want!
     };
   }
-
 
   async getCooldownStatus(userId: string) {
     try {
@@ -379,29 +384,26 @@ export class UsersService {
     }
   }
 
-
-
-
   async getAllUsers() {
-  return this.prisma.user.findMany({
-    select: {
-      id: true,
-      deviceId: true,
-      language: true,
-      ageGroup: true,
-      createdAt: true,
-      lastSeenAt: true,
-      _count: {
-        select: {
-          submissions: true,
+    return this.prisma.user.findMany({
+      select: {
+        id: true,
+        deviceId: true,
+        language: true,
+        ageGroup: true,
+        createdAt: true,
+        lastSeenAt: true,
+        _count: {
+          select: {
+            submissions: true,
+          },
         },
       },
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-  });
-}
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
 
   async deleteUser(userId: string) {
     // Check if user exists

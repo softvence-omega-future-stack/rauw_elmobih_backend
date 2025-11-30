@@ -149,9 +149,6 @@ export class UsersController {
     }
   }
 
-
-
-
   @Get('all')
   async getAllUsers() {
     try {
@@ -242,6 +239,12 @@ export class UsersController {
         { code: 'ARABIC', name: 'Arabic' },
         { code: 'TIGRINYA', name: 'Tigrinya' },
         { code: 'RUSSIAN', name: 'Russian' },
+        { code: 'FARSI', name: 'Farsi' },
+        { code: 'DARI', name: 'Dari' },
+        { code: 'SOMALI', name: 'Somali' },
+        { code: 'UKRAINIAN', name: 'Ukrainian' },
+        { code: 'FRENCH', name: 'French' },
+        { code: 'TURKISH', name: 'Turkish' },
       ],
       timestamp: new Date().toISOString(),
     };
