@@ -37,8 +37,15 @@ enum Language {
   NEDERLANDS
   ARABIC
   TIGRINYA
+  FARSI
+  DARI
+  SOMALI
+  UKRAINIAN
   RUSSIAN
+  FRENCH
+  TURKISH
 }
+
 
 enum OrganizationType {
   COA

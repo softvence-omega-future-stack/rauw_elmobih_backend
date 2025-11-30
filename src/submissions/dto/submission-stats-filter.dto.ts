@@ -3,19 +3,19 @@ import { IsOptional, IsString, IsNumberString } from 'class-validator';
 export class SubmissionStatsQueryDto {
   @IsOptional()
   @IsString()
-  dateRange?: string; // last_30_days, last_7_days, last_1_year etc.
+  dateRange?: string; 
 
   @IsOptional()
   @IsString()
-  language?: string; // ALL, TIGRINYA, ENGLISH...
+  language?: string; 
 
   @IsOptional()
   @IsString()
-  ageGroup?: string; // ALL, AGE_18_29, AGE_60_PLUS
+  ageGroup?: string;
 
   @IsOptional()
   @IsString()
-  colorLevel?: string; // ALL, RED, ORANGE, GREEN
+  colorLevel?: string; 
 
   @IsOptional()
   @IsNumberString()
