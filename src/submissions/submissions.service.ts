@@ -8,6 +8,19 @@ import {
   questionLabels,
 } from 'src/common/question/question-mapper';
 import { errorResponse, successResponse } from 'src/utils/response.util';
+import { SubmissionStatsQueryDto } from './dto/submission-stats-filter.dto';
+
+const DATE_RANGES: Record<string, number> = {
+  last_7_days: 7,
+  last_10_days: 10,
+  last_15_days: 15,
+  last_30_days: 30,
+  yesterday: 1,
+  last_2_month: 60,
+  last_3_month: 90,
+  last_6_month: 180,
+  last_1_year: 365,
+};
 
 @Injectable()
 export class SubmissionsService {
@@ -15,6 +28,50 @@ export class SubmissionsService {
     private prisma: PrismaService,
     private aiSummaryService: AiSummaryService,
   ) {}
+
+  private buildSubmissionFilters(filters: SubmissionStatsQueryDto) {
+    const {
+      dateRange,
+      language,
+      ageGroup,
+      colorLevel,
+      minScore,
+      maxScore,
+    } = filters;
+
+    const where: any = {};
+
+    // Score filter
+    if (minScore !== undefined || maxScore !== undefined) {
+      where.score = {};
+      if (minScore !== undefined) where.score.gte = Number(minScore);
+      if (maxScore !== undefined) where.score.lte = Number(maxScore);
+    }
+
+    // Date filter
+    if (dateRange && DATE_RANGES[dateRange]) {
+      const days = DATE_RANGES[dateRange];
+      const now = new Date();
+      const from = new Date(
+        Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate() - days,
+          0,
+          0,
+          0,
+          0,
+        ),
+      );
+      where.submittedAt = { gte: from };
+    }
+
+    if (language && language !== 'ALL') where.language = language as Language;
+    if (ageGroup && ageGroup !== 'ALL') where.ageGroup = ageGroup as AgeGroup;
+    if (colorLevel && colorLevel !== 'ALL') where.colorLevel = colorLevel as ColorLevel;
+
+    return where;
+  }
 
   async getAllSubmissions(page: number = 1, limit: number = 10) {
     try {
@@ -346,12 +403,19 @@ export class SubmissionsService {
     }
   }
 
-  async getAllSubmissionsWithAi(page: number = 1, limit: number = 10) {
+  async getAllSubmissionsWithAi(
+    page: number = 1,
+    limit: number = 10,
+    filters?: SubmissionStatsQueryDto,
+  ) {
     try {
       const skip = (page - 1) * limit;
 
+      const where = filters ? this.buildSubmissionFilters(filters) : {};
+
       const [submissions, total] = await Promise.all([
         this.prisma.submission.findMany({
+          where,
           include: {
             user: {
               select: {
@@ -363,7 +427,7 @@ export class SubmissionsService {
           skip,
           take: limit,
         }),
-        this.prisma.submission.count(),
+        this.prisma.submission.count({ where }),
       ]);
 
       const submissionsWithAi = await Promise.all(
@@ -635,64 +699,11 @@ export class SubmissionsService {
   //   }
   // }
 
-  async getSubmissionStats(filters: {
-    dateRange?: string;
-    language?: string;
-    ageGroup?: string;
-    colorLevel?: string;
-    minScore?: number;
-    maxScore?: number;
-  }) {
+  async getSubmissionStats(filters: SubmissionStatsQueryDto) {
     try {
-      const {
-        dateRange,
-        language,
-        ageGroup,
-        colorLevel,
-        minScore = 0,
-        maxScore = 100,
-      } = filters;
+      const { dateRange } = filters;
 
-      const now = new Date();
-
-      const ranges: Record<string, number> = {
-        last_7_days: 7,
-        last_10_days: 10,
-        last_15_days: 15,
-        last_30_days: 30,
-        yesterday: 1,
-        last_2_month: 60,
-        last_3_month: 90,
-        last_6_month: 180,
-        last_1_year: 365,
-      };
-
-      const where: any = {
-        score: { gte: minScore, lte: maxScore },
-      };
-
-      // Date filter (UTC safe)
-      if (dateRange && ranges[dateRange]) {
-        const days = ranges[dateRange];
-
-        const from = new Date(
-          Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth(),
-            now.getUTCDate() - days,
-            0,
-            0,
-            0,
-            0,
-          ),
-        );
-
-        where.submittedAt = { gte: from };
-      }
-
-      if (language && language !== 'ALL') where.language = language;
-      if (ageGroup && ageGroup !== 'ALL') where.ageGroup = ageGroup;
-      if (colorLevel && colorLevel !== 'ALL') where.colorLevel = colorLevel;
+      const where = this.buildSubmissionFilters(filters);
 
       /** STEP 1: Fetch submissions */
       const submissions = await this.prisma.submission.findMany({
@@ -765,8 +776,9 @@ export class SubmissionsService {
       /** STEP 5: Previous period stats */
       const previousWhere = { ...where };
 
-      if (dateRange && ranges[dateRange]) {
-        const days = ranges[dateRange];
+      if (dateRange && DATE_RANGES[dateRange]) {
+        const days = DATE_RANGES[dateRange];
+        const now = new Date();
 
         const prevFrom = new Date(
           Date.UTC(
@@ -855,11 +867,14 @@ export class SubmissionsService {
   }
 
   // chart
-  async getScoreDistributionByLanguage() {
+  async getScoreDistributionByLanguage(filters?: SubmissionStatsQueryDto) {
     try {
+      const where = filters ? this.buildSubmissionFilters(filters) : {};
+
       // 1️⃣ Fetch real submissions grouped by language
       const result = await this.prisma.submission.groupBy({
         by: ['language'],
+        where,
         _avg: { score: true },
         _count: { id: true },
       });
@@ -903,11 +918,14 @@ export class SubmissionsService {
     }
   }
 
-  async getColorScoreDistribution() {
+  async getColorScoreDistribution(filters?: SubmissionStatsQueryDto) {
     try {
+      const where = filters ? this.buildSubmissionFilters(filters) : {};
+
       // 1️⃣ Fetch submissions grouped by colorLevel
       const grouped = await this.prisma.submission.groupBy({
         by: ['colorLevel'],
+        where,
         _count: { id: true },
       });
 
@@ -958,14 +976,17 @@ export class SubmissionsService {
     }
   }
 
-  async getAverageScoreByAgeGroup() {
+  async getAverageScoreByAgeGroup(filters?: SubmissionStatsQueryDto) {
     try {
+      const where = filters ? this.buildSubmissionFilters(filters) : {};
+
       // ✅ Get all age groups from Prisma enum
       const allAgeGroups = Object.values(AgeGroup);
 
       // Get all submissions including those with null ageGroup
       const grouped = await this.prisma.submission.groupBy({
         by: ['ageGroup'],
+        where,
         _avg: { score: true },
         _count: { score: true },
       });
@@ -1007,15 +1028,21 @@ export class SubmissionsService {
   }
 
   // Add this method to your SubmissionsService class
-  async getWeeklyScoreTrend(weeks: number = 8) {
+  async getWeeklyScoreTrend(
+    weeks: number = 8,
+    filters?: SubmissionStatsQueryDto,
+  ) {
     try {
       const endDate = new Date();
       const startDate = new Date();
       startDate.setDate(endDate.getDate() - weeks * 7); // Go back 8 weeks
 
+      const whereFilters = filters ? this.buildSubmissionFilters(filters) : {};
+
       // Get submissions from the past 8 weeks
       const submissions = await this.prisma.submission.findMany({
         where: {
+          ...whereFilters,
           submittedAt: {
             gte: startDate,
             lte: endDate,
