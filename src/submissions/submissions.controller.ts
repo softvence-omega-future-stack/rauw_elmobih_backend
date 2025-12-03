@@ -45,13 +45,11 @@ async getToday(@Param('userId') userId: string) {
 }
 
   @Get('all-with-ai')
-  getAllWithAi(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
-    @Query() query: SubmissionStatsQueryDto,
-  ) {
+  getAllWithAi(@Query() query: SubmissionStatsQueryDto) {
+    const page = parseInt(query.page ?? '1') || 1;
+    const limit = parseInt(query.limit ?? '10') || 10;
     
-    return this.submissionsService.getAllSubmissionsWithAi(+page, +limit, query);
+    return this.submissionsService.getAllSubmissionsWithAi(page, limit, query);
   }
 
   @Get('by-users')
