@@ -48,9 +48,10 @@ async getToday(@Param('userId') userId: string) {
   getAllWithAi(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
+    @Query() query: SubmissionStatsQueryDto,
   ) {
     
-    return this.submissionsService.getAllSubmissionsWithAi(+page, +limit);
+    return this.submissionsService.getAllSubmissionsWithAi(+page, +limit, query);
   }
 
   @Get('by-users')
@@ -102,21 +103,14 @@ async getToday(@Param('userId') userId: string) {
 
   @Get('stats')
   async getStats(@Query() query: SubmissionStatsQueryDto) {
-    return this.submissionsService.getSubmissionStats({
-      dateRange: query.dateRange,
-      language: query.language,
-      ageGroup: query.ageGroup,
-      colorLevel: query.colorLevel,
-      minScore: query.minScore ? Number(query.minScore) : undefined,
-      maxScore: query.maxScore ? Number(query.maxScore) : undefined,
-    });
+    return this.submissionsService.getSubmissionStats(query);
   }
 
   // chart
   @Get('chart/score-by-language')
-  async getScoreDistributionByLanguage() {
+  async getScoreDistributionByLanguage(@Query() query: SubmissionStatsQueryDto) {
     try {
-      return await this.submissionsService.getScoreDistributionByLanguage();
+      return await this.submissionsService.getScoreDistributionByLanguage(query);
     } catch (error) {
       return errorResponse(
         error.message || 'Something went wrong',
@@ -126,14 +120,14 @@ async getToday(@Param('userId') userId: string) {
   }
 
   @Get('chart/color-by-score')
-  async getColorDistribution() {
-    return await this.submissionsService.getColorScoreDistribution();
+  async getColorDistribution(@Query() query: SubmissionStatsQueryDto) {
+    return await this.submissionsService.getColorScoreDistribution(query);
   }
 
   @Get('chart/average-score-by-age')
-  async averageScoreByAge() {
+  async averageScoreByAge(@Query() query: SubmissionStatsQueryDto) {
     try {
-      return await this.submissionsService.getAverageScoreByAgeGroup();
+      return await this.submissionsService.getAverageScoreByAgeGroup(query);
     } catch (error) {
       return errorResponse(
         error.message || 'Failed to fetch data',
@@ -144,19 +138,11 @@ async getToday(@Param('userId') userId: string) {
 
   // Add this to your SubmissionsController class
   @Get('chart/weekly-trend')
-  async getWeeklyScoreTrend(@Query('weeks') weeks: string = '8') {
+  async getWeeklyScoreTrend(
+    @Query() query: SubmissionStatsQueryDto,
+  ) {
     try {
-      const weeksNum = parseInt(weeks) || 8;
-
-      // Validate weeks parameter
-      if (weeksNum < 1 || weeksNum > 52) {
-        return errorResponse(
-          'Weeks parameter must be between 1 and 52',
-          'Invalid weeks parameter',
-        );
-      }
-
-      return await this.submissionsService.getWeeklyScoreTrend(weeksNum);
+      return await this.submissionsService.getWeeklyScoreTrend(8, query);
     } catch (error) {
       return errorResponse(
         error.message || 'Failed to fetch weekly trend',
