@@ -2,6 +2,14 @@ import { IsOptional, IsString, IsNumberString } from 'class-validator';
 
 export class SubmissionStatsQueryDto {
   @IsOptional()
+  @IsNumberString()
+  page?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  limit?: string;
+
+  @IsOptional()
   @IsString()
   dateRange?: string; 
 
