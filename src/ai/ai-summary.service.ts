@@ -18,15 +18,6 @@ export class AiSummaryService {
     date?: string;
   }) {
     try {
-      // Optional: block duplicate summaries for same user
-      // const existing = await this.prisma.aISummary.findFirst({
-      //   where: { userId: data.userId },
-      // });
-
-      // if (existing) {
-      //   return existing;
-      // }
-
       const savedSummary = await this.prisma.aISummary.create({
         data: {
           userId: data.userId,
@@ -41,6 +32,35 @@ export class AiSummaryService {
       console.error(error);
       throw new HttpException(
         'Failed to save AI summary',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async updateSummary(
+    data: {
+      id: string,
+      summary?: string;
+      themes?: string[];
+      date?: string;
+    },
+  ) {
+    try {
+      const updatedSummary = await this.prisma.aISummary.update({
+        where: { id: data.id },
+        data: {
+          ...(data.summary && { summary: data.summary }),
+          ...(data.themes && { themes: data.themes }),
+          ...(data.date && { date: data.date }),
+        },
+      });
+
+      return updatedSummary;
+    } catch (error) {
+      console.error(error);
+
+      throw new HttpException(
+        'Failed to update AI summary',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
