@@ -12,6 +12,8 @@ export function getDateRange(range: string) {
       return { start: subDays(now, 10), end: now };
     case 'last_7_days':
       return { start: subDays(now, 7), end: now };
+    case 'today':
+      return { start: startOfDay(now), end: endOfDay(now) };
     case 'yesterday':
       const y = subDays(now, 1);
       return { start: startOfDay(y), end: endOfDay(y) };
