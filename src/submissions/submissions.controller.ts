@@ -4,6 +4,8 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Patch,
+  Body,
   Query,
 } from '@nestjs/common';
 import { SubmissionsService } from './submissions.service';
@@ -13,6 +15,7 @@ import {
   successResponse,
 } from 'src/utils/response.util';
 import { SubmissionStatsQueryDto } from './dto/submission-stats-filter.dto';
+import { UpdateColorDto } from './dto/update-color.dto';
 
 @Controller('submissions')
 export class SubmissionsController {
@@ -134,7 +137,6 @@ async getToday(@Param('userId') userId: string) {
     }
   }
 
-  // Add this to your SubmissionsController class
   @Get('chart/weekly-trend')
   async getWeeklyScoreTrend(
     @Query() query: SubmissionStatsQueryDto,
@@ -145,6 +147,23 @@ async getToday(@Param('userId') userId: string) {
       return errorResponse(
         error.message || 'Failed to fetch weekly trend',
         'Error retrieving weekly well-being score trend',
+      );
+    }
+  }
+
+
+
+  @Patch('color/:id')
+  async updateColor(
+    @Param('id') id: string,
+    @Body() body: UpdateColorDto,
+  ) {
+    try {
+      return await this.submissionsService.updateColorLevel(id, body.colorLevel);
+    } catch (error) {
+      return errorResponse(
+        error.message,
+        'Failed to update color level',
       );
     }
   }

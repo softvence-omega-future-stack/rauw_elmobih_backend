@@ -1210,4 +1210,31 @@ export class SubmissionsService {
 
     return `${d.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
   }
+
+  async updateColorLevel(id: string, colorLevel: ColorLevel) {
+    try {
+      const submission = await this.prisma.submission.findUnique({
+        where: { id },
+      });
+
+      if (!submission) {
+        throw new Error('Submission not found');
+      }
+
+      const updatedSubmission = await this.prisma.submission.update({
+        where: { id },
+        data: { colorLevel },
+      });
+
+      return successResponse(
+        updatedSubmission,
+        'Color level updated successfully',
+      );
+    } catch (error) {
+      if (error.message === 'Submission not found') {
+        throw error;
+      }
+      throw new Error(`Failed to update color level: ${error.message}`);
+    }
+  }
 }
