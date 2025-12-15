@@ -12,24 +12,24 @@ export class ThemeMonitorService {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async handleThemeCheck() {
-    this.logger.debug('Checking for "onveilig voelen" themes in recent summaries...');
+    this.logger.debug('Checking for "Onveiligheidsgevoel" themes in recent summaries...');
 
     try {
-        // 1. Find all users who have an AI Summary with "onveilig voelen" in the last 24 hours (optimization)
-        // Or getting all summaries might be heavy. Let's look for "onveilig voelen" directly.
+        // 1. Find all users who have an AI Summary with "Onveiligheidsgevoel" in the last 24 hours (optimization)
+        // Or getting all summaries might be heavy. Let's look for "Onveiligheidsgevoel" directly.
         // Since 'themes' is a string array, we can use array-container syntax if using Postgres
         // But Prisma syntax for array filtering:
       
         const summaries = await this.prisma.aISummary.findMany({
             where: {
                 themes: {
-                    has: 'onveilig voelen'
+                    has: 'Onveiligheidsgevoel'
                 }
             },
             select: {
                 userId: true
                 // We might want to limit this to recently updated summaries if the user has many
-                // But the requirement says "if you found, onveilig voelen", implies checking all or active ones.
+                // But the requirement says "if you found, Onveiligheidsgevoel", implies checking all or active ones.
                 // To be safe and efficient, we should probably check those that haven't been acted upon?
                 // But we don't have a flag. So we will check ALL, and ensure their LATEST submission is RED.
                 // If it is already RED, we skip.
@@ -37,12 +37,12 @@ export class ThemeMonitorService {
         });
 
         if (summaries.length === 0) {
-            // this.logger.debug('No "onveilig voelen" themes found.');
+            // this.logger.debug('No "Onveiligheidsgevoel" themes found.');
             return;
         }
 
         const userIds = [...new Set(summaries.map(s => s.userId))];
-        this.logger.log(`Found ${userIds.length} users with "onveilig voelen" theme.`);
+        this.logger.log(`Found ${userIds.length} users with "Onveiligheidsgevoel" theme.`);
 
         for (const userId of userIds) {
             await this.processUserSubmission(userId);
@@ -71,7 +71,7 @@ export class ThemeMonitorService {
                       colorLevel: ColorLevel.RED,
                   }
               });
-              this.logger.log(`Updated submission ${latestSubmission.id} for user ${userId} to RED due to "onveilig voelen".`);
+              this.logger.log(`Updated submission ${latestSubmission.id} for user ${userId} to RED due to "Onveiligheidsgevoel".`);
           }
       } catch (e) {
              this.logger.error(`Failed to process submission for user ${userId}`, e);
