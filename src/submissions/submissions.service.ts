@@ -11,6 +11,7 @@ import { errorResponse, successResponse } from 'src/utils/response.util';
 import { SubmissionStatsQueryDto } from './dto/submission-stats-filter.dto';
 
 const DATE_RANGES: Record<string, number> = {
+  today: 0,
   last_7_days: 7,
   last_10_days: 10,
   last_15_days: 15,
@@ -49,7 +50,7 @@ export class SubmissionsService {
     }
 
     // Date filter
-    if (dateRange && DATE_RANGES[dateRange]) {
+    if (dateRange && DATE_RANGES[dateRange] !== undefined) {
       const days = DATE_RANGES[dateRange];
       const now = new Date();
       const from = new Date(
@@ -776,15 +777,16 @@ export class SubmissionsService {
       /** STEP 5: Previous period stats */
       const previousWhere = { ...where };
 
-      if (dateRange && DATE_RANGES[dateRange]) {
+      if (dateRange && DATE_RANGES[dateRange] !== undefined) {
         const days = DATE_RANGES[dateRange];
+        const comparisonDays = days === 0 ? 1 : days;
         const now = new Date();
 
         const prevFrom = new Date(
           Date.UTC(
             now.getUTCFullYear(),
             now.getUTCMonth(),
-            now.getUTCDate() - days * 2,
+            now.getUTCDate() - days - comparisonDays,
             0,
             0,
             0,
@@ -1207,5 +1209,32 @@ export class SubmissionsService {
     );
 
     return `${d.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
+  }
+
+  async updateColorLevel(id: string, colorLevel: ColorLevel) {
+    try {
+      const submission = await this.prisma.submission.findUnique({
+        where: { id },
+      });
+
+      if (!submission) {
+        throw new Error('Submission not found');
+      }
+
+      const updatedSubmission = await this.prisma.submission.update({
+        where: { id },
+        data: { colorLevel },
+      });
+
+      return successResponse(
+        updatedSubmission,
+        'Color level updated successfully',
+      );
+    } catch (error) {
+      if (error.message === 'Submission not found') {
+        throw error;
+      }
+      throw new Error(`Failed to update color level: ${error.message}`);
+    }
   }
 }
