@@ -9,6 +9,7 @@ import { UsersModule } from './user/users.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { SettingsModule } from './settings/settings.module';
 import { BrandSettingsModule } from './brand-settings/brand-settings.module';
+import { JobsModule } from './jobs/jobs.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { BrandSettingsModule } from './brand-settings/brand-settings.module';
     SubmissionsModule,
     SettingsModule,
     BrandSettingsModule,
+    JobsModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy, PrismaService],
