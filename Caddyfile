@@ -1,0 +1,22 @@
+# Frontend (reserved for later)
+rauwapp.nl {
+    respond "Frontend coming soon – powered by rauwapp.nl" 200
+}
+
+www.rauwapp.nl {
+    redir https://rauwapp.nl{uri} permanent
+}
+
+# Your NestJS backend (live now)
+api.rauwapp.nl {
+    reverse_proxy app:3009
+    encode gzip
+    log {
+        output file /data/api-access.log
+    }
+}
+
+# AI backend (for the other team – placeholder)
+ai.rauwapp.nl {
+    respond "AI backend coming soon" 200
+}

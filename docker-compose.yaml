@@ -1,7 +1,7 @@
 services:
   app:
     container_name: rauw-backend
-    image: sakibsakib/rauw:latest
+    image: rockyhaque/rauw:latest
     build: .
     ports:
       - '3009:3009'
