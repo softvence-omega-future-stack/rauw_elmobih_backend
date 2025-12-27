@@ -13,6 +13,7 @@ services:
       - app_network
 
   rauw-backend:
+    build: .
     image: rockyhaque/rauw:latest
     container_name: rauw-backend
     restart: always
