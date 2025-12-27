@@ -21,16 +21,7 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
-  app.enableCors({
-    origin: [
-      'https://jovial-paprenjak-92803f.netlify.app',
-      'https://rauwapp.nl',
-      'https://ai.rauwapp.nl',
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'https://elmobih-ai.onrender.com'
-    ],
-  });
+  app.enableCors();
 
   // Enable IP detection
   app.use(requestIp.mw());
