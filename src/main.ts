@@ -30,7 +30,6 @@ async function bootstrap() {
       'http://localhost:3000',
       'https://elmobih-ai.onrender.com'
     ],
-    credentials: true,
   });
 
   // Enable IP detection
